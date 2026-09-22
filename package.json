@@ -16,7 +16,8 @@
     "core": "node core/dist/server-cli.js",
     "mcp": "node mcp/dist/server-cli.js",
     "gateway": "node gateway/dist/server-cli.js",
-    "mcp:add": "node scripts/mcp-add.mjs"
+    "mcp:add": "node scripts/mcp-add.mjs",
+    "ingest:repo": "node core/dist/ingest/repo-cli.js"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
