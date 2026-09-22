@@ -21,6 +21,15 @@
 }
 
 * { box-sizing: border-box; }
+
+/*
+ * An author rule beats the UA stylesheet whatever the specificity, so every
+ * `display:` declaration below would quietly defeat the `hidden` attribute --
+ * which is how the detail panel and the empty tool strip rendered anyway. One
+ * rule here is cheaper than remembering not to set display on anything the
+ * JavaScript hides.
+ */
+[hidden] { display: none !important; }
 html, body { height: 100%; margin: 0; }
 body {
   background: var(--bg); color: var(--text);

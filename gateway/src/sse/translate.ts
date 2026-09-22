@@ -187,6 +187,9 @@ function extractText(content: unknown): string {
 }
 
 function summarize(name: string, text: string): string {
+  // Some tools return no text at all. An empty summary renders as a chip
+  // reading "ToolSearch —", so say the only true thing available instead.
+  if (text.trim().length === 0) return 'done';
   if (!MEMORY_TOOL.test(name)) return text.slice(0, 200);
   const matched = /^(\d+) item\(s\) matched/m.exec(text);
   if (matched) return `found ${matched[1]} memories`;

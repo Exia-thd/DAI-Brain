@@ -150,7 +150,9 @@ function handleEvent(event, view, toolNodes) {
       const node = toolNodes.get(event.toolId);
       if (node) {
         node.className = `tool ${event.ok ? 'ok' : 'failed'}`;
-        node.lastChild.textContent = `${toolLabel(event.name)} — ${event.summary}`;
+        node.lastChild.textContent = event.summary
+          ? `${toolLabel(event.name)} — ${event.summary}`
+          : toolLabel(event.name);
       }
       break;
     }
