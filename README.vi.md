@@ -1,0 +1,364 @@
+# DAI Brain
+
+[English](README.md) · **Tiếng Việt**
+
+Một hệ thống memory gồm bốn thành phần. **Core** là memory service — retrieval,
+ingestion, storage. **MCP** expose Core cho Claude dưới dạng bốn tool.
+**Gateway** điều phối UI, Claude CLI và Core. **UI** là giao diện chat.
+
+Toàn bộ logic retrieval nằm trong Core. MCP và Gateway chỉ là adapter mỏng —
+đó chính là lý do sau này bạn thay Claude CLI bằng Agent SDK, hoặc thay UI này
+bằng cái khác, mà không phải đụng vào phần quyết định memory trả về cái gì.
+
+```
+dai-brain/
+├── core/      memory service: retrieval, ingestion, storage (Postgres + pgvector)
+├── mcp/       MCP server adapter — bốn tool qua streamable HTTP
+├── gateway/   orchestrator: spawn claude -p, SSE, session, write-back
+├── ui/        web UI — chat và memory explorer, không cần build
+├── shared/    contract: DTO, event schema, scope model
+├── eval/      bộ câu hỏi chuẩn + metric retrieval
+└── infra/     docker-compose, Dockerfile, file env mẫu
+```
+
+## Chạy nhanh
+
+```bash
+cp infra/.env.example infra/.env     # sửa lại cho đúng
+cd infra && docker compose up
+```
+
+Rồi mở <http://localhost:8080>.
+
+Nếu muốn chạy trực tiếp thay vì Docker:
+
+```bash
+pnpm install
+pnpm build
+
+export DATABASE_URL=postgres://postgres:postgres@localhost:5432/daibrain
+pnpm migrate
+
+pnpm core                                              # :8081
+CORE_URL=http://localhost:8081 pnpm mcp                # :8082
+GATEWAY_DEV_SCOPE=acme/me/daibrain pnpm gateway        # :8080
+```
+
+`GATEWAY_DEV_SCOPE` tắt hoàn toàn xác thực và chạy mọi request dưới một user.
+Nó bị từ chối khi `NODE_ENV=production`.
+
+## Một câu hỏi được trả lời như thế nào
+
+1. UI gọi `POST /chat`. Gateway verify JWT rồi quyết định scope. Đây là nơi duy
+   nhất scope được quyết định.
+2. Pre-fetch: gọi Core `/search` với budget khoảng 1000 token. Kết quả được đưa
+   vào `--append-system-prompt`, nên lượt đầu tiên đã có memory trước cả khi
+   model nghĩ đến chuyện đi tìm.
+3. Gateway spawn `claude -p` với memory MCP server đã nối sẵn, và
+   `--allowedTools` giới hạn đúng bốn tool memory.
+4. Claude có thể gọi thêm `memory_search`. MCP forward sang Core kèm scope mà
+   Gateway đã đặt — model không nhìn thấy header đó và không đổi được nó.
+5. Stream translator map `stream-json` của Claude sang sáu SSE event. Tool
+   result từ `mcp__memory__*` trở thành event `citation`.
+6. Khi lượt chat kết thúc sạch sẽ, transcript được đẩy vào hàng đợi write-back.
+
+## Dùng DAI Brain từ Claude Code của chính bạn
+
+Gateway tự viết MCP config cho các session nó spawn, nên web UI không cần cấu
+hình gì. Còn để truy cập cùng bộ memory đó từ CLI `claude` trong terminal của
+bạn, bạn phải tự đăng ký MCP server.
+
+Core và MCP phải chạy trước (`pnpm core` và `pnpm mcp`, hoặc `docker compose up`
+trong `infra/`).
+
+### Cách A — một lệnh, chỉ cho riêng bạn
+
+```bash
+pnpm mcp:add --scope acme/me/daibrain
+```
+
+Hoặc khi không có sẵn repo này:
+
+```bash
+claude mcp add --transport http dai-brain http://localhost:8082/mcp \
+  --header "X-Scope: acme/me/daibrain"
+```
+
+Thêm `--user-scope` (hoặc `-s user` nếu gõ lệnh gốc) để dùng được ở mọi thư mục
+chứ không chỉ thư mục hiện tại.
+
+Kiểm tra lại:
+
+```bash
+claude mcp list
+# dai-brain: http://localhost:8082/mcp (HTTP) - ✓ Connected
+```
+
+### Cách B — config commit vào repo, cho cả team
+
+File `.mcp.json` đã có sẵn trong repo này:
+
+```json
+{
+  "mcpServers": {
+    "dai-brain": {
+      "type": "http",
+      "url": "${DAI_BRAIN_MCP_URL:-http://localhost:8082/mcp}",
+      "headers": { "X-Scope": "${DAI_BRAIN_SCOPE}" }
+    }
+  }
+}
+```
+
+Mọi người dùng chung file; mỗi người tự đặt scope của mình:
+
+```bash
+export DAI_BRAIN_SCOPE=acme/ten-cua-ban/daibrain
+```
+
+Copy file này sang repo khác là dùng được cùng bộ memory khi làm việc ở đó.
+
+`.claude/settings.json` chỉ đích danh server này trong `enabledMcpjsonServers`,
+nên nó load mà không cần hỏi. Đây là lựa chọn hẹp hơn `enableAllProjectMcpServers:
+true` một cách có chủ ý — approve *server này* là quyết định về một file bạn đọc
+được, còn approve tất cả là lời hứa cho mọi `.mcp.json` mà ai đó thêm vào sau này.
+Nếu không có setting, chạy `claude` một lần ở chế độ interactive và bấm approve.
+
+### Header scope là bắt buộc
+
+`X-Scope` có dạng `tenant/user/project` (đặt `*` ở ô project để đọc xuyên suốt
+mọi project của bạn). MCP server **từ chối request không có header này** thay vì
+tự chọn giá trị mặc định — vì lựa chọn còn lại là đoán xem bạn muốn memory của
+ai, đúng cái lỗi đọc chéo user mà toàn bộ scope model sinh ra để chặn.
+
+Nếu `DAI_BRAIN_SCOPE` chưa được set, CLI báo thẳng và không load server:
+
+```
+[Warning] [dai-brain] mcpServers.dai-brain: Missing environment variables: DAI_BRAIN_SCOPE
+```
+
+### Vài chỗ sẽ làm bạn bối rối đúng một lần
+
+- **Tên server quyết định tiền tố của tool.** Đặt tên `dai-brain` thì tool là
+  `mcp__dai-brain__memory_search`. Đặt tên `memory` thì trùng với cái Gateway
+  cho phép (`mcp__memory__*`). Kiểu nào cũng được — miễn là khớp với thứ bạn
+  truyền vào `--allowedTools`.
+- **`claude mcp list` hiện project server là "Pending approval"** ngay cả khi nó
+  đang chạy tốt. Lệnh list đó không đọc `enableAllProjectMcpServers`, còn session
+  thật thì có. Hãy kiểm tra bằng một lần chạy thật, đừng tin cái list.
+- **Đây là cổng của MCP (8082), không phải của Gateway (8080).** CLI nói chuyện
+  thẳng với MCP. Nó lấy được memory, nhưng không có pre-fetch, lịch sử hội thoại
+  hay write-back của Gateway — những thứ đó thuộc về giao diện chat.
+
+### Dùng trong script
+
+Để ghim đúng một server và bỏ qua mọi thứ khác đang cấu hình trên máy, giống
+cách Gateway làm:
+
+```bash
+cat > /tmp/dai-mcp.json <<'JSON'
+{ "mcpServers": { "memory": { "type": "http", "url": "http://localhost:8082/mcp",
+  "headers": { "X-Scope": "acme/me/daibrain" } } } }
+JSON
+
+claude -p "hồi trước mình chốt dùng database nào?" \
+  --mcp-config /tmp/dai-mcp.json --strict-mcp-config \
+  --allowedTools "mcp__memory__memory_search,mcp__memory__memory_write"
+```
+
+`--strict-mcp-config` là cờ quan trọng nhất: thiếu nó, CLI sẽ trộn thêm các MCP
+server vốn có của máy vào session.
+
+## Retrieval
+
+`POST /search` chạy năm bước:
+
+| Bước | Làm gì | Tại sao cần |
+|---|---|---|
+| Vector | pgvector ANN, hoặc quét chính xác nếu không có extension | Khái quát hóa qua cách diễn đạt khác nhau |
+| Graph | Entity-link câu hỏi, mở rộng 1–2 hop | Tìm cái *liên quan*, không chỉ cái giống chữ |
+| FTS | Postgres `tsvector`, config `simple` | Định danh chính xác, tên flag, số phiên bản |
+| RRF | Reciprocal rank fusion, có trọng số | Ba điểm số không chung thang đo; chỉ thứ hạng là chung |
+| Rerank | Tùy chọn, nằm sau một interface | RRF chỉ biết thứ hạng, nên không phân biệt được decision với note |
+
+Ba nhánh chạy song song và mỗi nhánh tự bắt lỗi của mình, nên một nhánh hỏng chỉ
+làm giảm recall chứ không làm hỏng cả request. Nhánh nào không đóng góp gì đều bị
+gọi tên trong fusion report kèm lý do:
+
+```json
+"fusion": {
+  "branches": { "vector": 7, "fts": 1, "graph": 0 },
+  "degraded": ["graph"],
+  "reasons": { "graph": "no entity in this scope matched the query text" }
+}
+```
+
+Một nhánh trả về rỗng mà không nói gì chính là cách hệ hybrid âm thầm thoái hóa
+thành "còn nhánh nào chạy được thì dùng nhánh đó". Memory explorer hiển thị
+report này cho mọi lần search, nên đó là cách nhanh nhất để chẩn đoán recall kém.
+
+### Packer theo token budget
+
+`maxTokens` là trần cứng. Không item nào được chiếm quá 35% budget, nên một
+artifact dài không thể đè mất năm decision ngắn, và packer vẫn chạy tiếp qua item
+không vừa. Mọi thứ bị bỏ đều được đếm trong `omitted` — một cái limit chỉ trả lời
+"bao nhiêu", không bao giờ trả lời "có tất cả bao nhiêu".
+
+## Đánh giá (eval)
+
+```bash
+pnpm eval              # một cấu hình, kèm những câu nó trả lời trượt
+pnpm eval --compare    # chỉ vector vs. đủ nhánh vs. graph 2 hop vs. rerank
+```
+
+45 câu hỏi được chấm bằng tay trên corpus 40 item, cả tiếng Anh lẫn tiếng Việt,
+nằm trong `eval/data/`. Trường `relevant` liệt kê những item thực sự trả lời được
+câu hỏi — chấm bằng tay, tuyệt đối không lấy từ output của retriever, vì một bộ
+eval dựng từ chính output của nó thì chẳng đo được gì.
+
+Số liệu hiện tại, chạy trên embedder **hash** (xem bên dưới — đây là mức sàn):
+
+```
+đủ nhánh, không rerank       recall@5 83.3%   recall@10 90.4%
+                             MRR@10 0.843     nDCG@10 0.825    p95 8ms
+chỉ vector+fts (tắt graph)   recall@5 81.1%   recall@10 89.3%   MRR@10 0.804
+đủ nhánh, graph 2 hop        recall@5 83.3%   recall@10 89.3%   MRR@10 0.831
+đủ nhánh + rerank            recall@5 83.3%   recall@10 89.3%   MRR@10 0.847
+```
+
+Nghĩa là graph expansion đáng giá khoảng 4 điểm MRR ở 1 hop và không thêm gì ở
+2 hop, còn reranker đánh đổi một chút nDCG lấy một chút MRR. Đó chính là loại con
+số mà trọng số các nhánh nên dựa vào để thay đổi.
+
+Chênh lệch khoảng ±1 điểm giữa các lần chạy là bình thường: `ivfflat` là index
+gần đúng, và hành vi của nó thay đổi theo những gì đang có trong bảng. Coi mức
+dịch 1 điểm là nhiễu, 5 điểm mới là kết quả.
+
+Hai câu còn trượt đều cần khả năng khái quát ngữ nghĩa mà hash embedder không có
+("nên viết service mới bằng ngôn ngữ gì?" → một memory nói *TypeScript* nhưng
+không hề có chữ *ngôn ngữ*). Đó đúng là phần việc của một embedder thật.
+
+Cho CI, thêm `--min-recall 0.85 --max-p95 500` để lệnh fail thay vì chỉ in số.
+
+## Embeddings
+
+Mặc định là `hash`: tất định, chạy offline, không tải gì, nên vừa clone về là
+chạy được cả hệ lẫn eval. Nhưng nó thuần từ vựng — hai cách diễn đạt không chung
+chữ nào sẽ nằm rất xa nhau. **Recall đo trên nó là mức sàn, không phải dự báo.**
+
+```bash
+DAI_EMBEDDING_PROVIDER=transformers DAI_EMBEDDING_MODEL=Xenova/all-MiniLM-L6-v2
+```
+
+`DAI_EMBEDDING_DIMS` phải khớp với model và được **cố định ngay lúc migrate**, vì
+đó là độ rộng của cột `vector(N)`. Đổi nó sau khi đã có dữ liệu thì phải tạo store
+mới và ingest lại.
+
+## Scope
+
+`tenant → user → project`. Mọi query đều mang một scope, và **scope không bao giờ
+đến từ model**.
+
+- Gateway quyết định nó, từ JWT claim đã verify, trong `scopeFor()`.
+- Nó đi theo header `X-Scope: tenant/user/project` (`*` nghĩa là mọi project).
+- Core tin tuyệt đối header đó — điều này chỉ đúng khi Gateway là thứ duy nhất
+  gọi được tới Core. Trong `infra/docker-compose.yml`, chỉ Gateway mở cổng ra
+  ngoài.
+- `scopeWhere()` là cách duy nhất một scope trở thành SQL. Không có biến thể nào
+  nhận scope tùy chọn.
+- ID của entity được suy ra từ scope, nên hai user cùng viết về "Deployment" sẽ
+  có hai node riêng, không phải một node dùng chung.
+- Cache search có scope trong khóa. Một cache chỉ khóa theo câu hỏi là cách rò rỉ
+  chéo user rẻ nhất, và nó vượt qua mọi bài test chạy với một user.
+
+`tests/scope-isolation.test.js` kiểm tra toàn bộ những điều trên.
+
+## Write-back
+
+Gateway đẩy transcript vào hàng đợi → worker nhận job (`FOR UPDATE SKIP LOCKED`)
+→ một model rẻ trích xuất các fact ứng viên → privacy filter chạy → reconciler
+quyết định.
+
+Bốn kết quả: `rejected` (dính secret, hoặc confidence dưới ngưỡng), `duplicate`
+(trùng nội dung sau khi chuẩn hóa), `superseded` (có item gần giống vượt ngưỡng
+similarity — item cũ bị đánh dấu, không bị xóa), `inserted`.
+
+**Undo.** Mọi item do write-back tạo ra đều mang `conversation_id`, nên:
+
+```bash
+curl -X DELETE localhost:8080/conversations/conv_abc/memory
+```
+
+xóa sạch những gì một lần chạy tạo ra, và không đụng vào thứ do người viết tay.
+
+Hãy bắt đầu chặt tay. `GATEWAY_WRITEBACK_MIN_CONFIDENCE=0.6` là cái sàn để nới ra
+khi có bằng chứng, không phải con số để hạ xuống chỉ vì thấy store trông hơi rỗng.
+
+## Privacy filter
+
+API key của các provider, khối private key và JWT sẽ **loại bỏ cả item**. Secret
+dạng gán giá trị (`DB_PASSWORD=…`), mật khẩu trong database URL, bearer token và
+email thì bị **che**, giữ lại câu văn và bỏ đi giá trị. Số thẻ chỉ bị che khi qua
+được kiểm tra Luhn, để chuỗi phiên bản và timestamp không bị ăn oan.
+
+Một secret nằm trong memory còn tệ hơn nằm trong log: nó sẽ được truy xuất, gói
+vào system prompt, và gửi tới model ở mọi câu hỏi sau này có nét giống câu đã
+bắt được nó.
+
+## Test
+
+```bash
+export DATABASE_URL=postgres://postgres:postgres@localhost:5432/daibrain_test
+pnpm migrate
+pnpm test
+```
+
+Các test cần database sẽ tự skip khi không có, thay vì fail. Mỗi test nhận một
+project scope mới tinh, nên chúng không bao giờ nhìn thấy dữ liệu của nhau.
+
+## Cấu hình
+
+**Core** — `DATABASE_URL`, `CORE_PORT`, `DAI_EMBEDDING_PROVIDER`,
+`DAI_EMBEDDING_MODEL`, `DAI_EMBEDDING_DIMS`, `DAI_SEARCH_MAX_TOKENS`,
+`DAI_SEARCH_LIMIT`, `DAI_GRAPH_DEPTH`, `DAI_DEDUPE_THRESHOLD`,
+`DAI_SEARCH_CACHE_TTL_MS`.
+
+**Gateway** — `GATEWAY_PORT`, `CORE_URL`, `MCP_URL`, `CLAUDE_BIN`,
+`CLAUDE_MODEL`, `GATEWAY_MAX_CONCURRENCY`, `GATEWAY_REQUEST_TIMEOUT_MS`,
+`GATEWAY_SESSION_ROOT`, `GATEWAY_PREFETCH_TOKENS`, `GATEWAY_JWT_SECRET`,
+`GATEWAY_DEV_SCOPE`, `GATEWAY_WRITEBACK*`.
+
+**MCP** — `MCP_PORT`, `CORE_URL`.
+
+### Xác thực cho CLI
+
+Nếu DAI Brain phục vụ nhiều hơn một người, hãy cho CLI chạy bằng
+`ANTHROPIC_API_KEY` thay vì đăng nhập bằng subscription cá nhân: tiến trình này
+phục vụ bất kỳ ai cầm token, còn subscription thì cấp cho một con người cụ thể.
+Hãy kiểm tra lại điều khoản của Anthropic cho trường hợp của bạn.
+
+## Hạn chế đã biết
+
+- **Nhánh vector không có ngưỡng similarity.** Nó là k-nearest, nên luôn trả về
+  đủ `k` hàng xóm dù chẳng liên quan gì. RRF và token budget có giảm nhẹ chuyện
+  này, nhưng thêm một ngưỡng là một nút chỉnh thật sự — và nên để eval quyết định
+  chứ không phải cảm tính.
+- **Reranker mới chỉ là heuristic**, chưa phải cross-encoder: nó trộn độ phủ câu
+  hỏi, loại memory và độ mới. `Reranker` là interface để một model thật thay vào;
+  eval sẽ nói cho bạn biết độ trễ đó có đáng không.
+- **Relation mới chỉ là đồng xuất hiện.** `RELATES_TO` nghĩa là các tên này cùng
+  xuất hiện trong một memory. Chưa có gì suy ra được chúng liên quan *như thế nào*.
+- **Write-back chưa có tác vụ quét định kỳ.** Nó chạy theo từng hội thoại; chưa có
+  pass chạy nền để gộp hay làm suy giảm memory xuyên nhiều hội thoại.
+- **Chưa có memory decay.** Độ mới mới chỉ là một thành phần trong reranker, chưa
+  phải tiến trình nền hạ dần vị thế của các item cũ, ít dùng.
+- **UI không render markdown.** Câu trả lời được chèn bằng `textContent`, nên
+  `**đậm**` sẽ hiện ra cả dấu sao. Đó là mặc định an toàn cho văn bản do model
+  sinh ra; muốn render thì cần một parser có sanitize, không phải một cái regex.
+- **Observability mới chỉ là log ra console.** Phần tracing mà kế hoạch mong muốn
+  (Langfuse hoặc OpenTelemetry xuyên pre-fetch, tool call, token và latency) chưa
+  được làm.
+
+## Giấy phép
+
+MIT.

@@ -1,0 +1,12 @@
+{
+  "//": "DAI Brain memory, for Claude Code sessions in this repo and anywhere else you copy this file. Parameterised on purpose: the scope is the one thing that differs per person, so it comes from the environment rather than from this committed file. Without DAI_BRAIN_SCOPE set, the CLI warns and does not load the server — which is the right failure, since the alternative is guessing whose memory you meant.",
+  "mcpServers": {
+    "dai-brain": {
+      "type": "http",
+      "url": "${DAI_BRAIN_MCP_URL:-http://localhost:8082/mcp}",
+      "headers": {
+        "X-Scope": "${DAI_BRAIN_SCOPE}"
+      }
+    }
+  }
+}

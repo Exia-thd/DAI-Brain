@@ -15,7 +15,8 @@
     "eval": "node eval/dist/run.js",
     "core": "node core/dist/server-cli.js",
     "mcp": "node mcp/dist/server-cli.js",
-    "gateway": "node gateway/dist/server-cli.js"
+    "gateway": "node gateway/dist/server-cli.js",
+    "mcp:add": "node scripts/mcp-add.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

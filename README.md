@@ -1,5 +1,7 @@
 # DAI Brain
 
+**English** · [Tiếng Việt](README.vi.md)
+
 A memory system with four parts. **Core** is the memory service — retrieval,
 ingestion, storage. **MCP** exposes Core to Claude as four tools. **Gateway**
 orchestrates the UI, the Claude CLI and Core. **UI** is the chat client.
@@ -61,6 +63,115 @@ user. It is refused when `NODE_ENV=production`.
 5. The stream translator maps Claude's `stream-json` onto six SSE events. Tool
    results from `mcp__memory__*` become `citation` events.
 6. On a clean turn the transcript is queued for write-back.
+
+## Use DAI Brain from your own Claude Code
+
+The Gateway writes its own MCP config for the sessions it spawns, so the web UI
+needs nothing set up. To reach the same memory from the `claude` CLI in your own
+terminal, you register the MCP server yourself.
+
+Core and MCP have to be running first (`pnpm core` and `pnpm mcp`, or
+`docker compose up` in `infra/`).
+
+### Option A — one command, just for you
+
+```bash
+pnpm mcp:add --scope acme/me/daibrain
+```
+
+Or without this repo checked out:
+
+```bash
+claude mcp add --transport http dai-brain http://localhost:8082/mcp \
+  --header "X-Scope: acme/me/daibrain"
+```
+
+Add `--user-scope` (or `-s user` on the raw command) to make it available in
+every directory rather than only this one.
+
+Check it:
+
+```bash
+claude mcp list
+# dai-brain: http://localhost:8082/mcp (HTTP) - ✓ Connected
+```
+
+### Option B — committed config, for a team
+
+`.mcp.json` is already in this repo:
+
+```json
+{
+  "mcpServers": {
+    "dai-brain": {
+      "type": "http",
+      "url": "${DAI_BRAIN_MCP_URL:-http://localhost:8082/mcp}",
+      "headers": { "X-Scope": "${DAI_BRAIN_SCOPE}" }
+    }
+  }
+}
+```
+
+Everyone shares the file; each person sets their own scope:
+
+```bash
+export DAI_BRAIN_SCOPE=acme/your-name/daibrain
+```
+
+Copy it into any other repo to use the same memory while working there.
+
+`.claude/settings.json` names this one server in `enabledMcpjsonServers`, so it
+loads without a prompt. That is deliberately narrower than
+`enableAllProjectMcpServers: true` — approving *this* server is a decision about
+a file you can read, while approving all of them is a standing promise about
+every `.mcp.json` anyone adds later. Without the setting, run `claude` once
+interactively and approve.
+
+### The scope header is mandatory
+
+`X-Scope` is `tenant/user/project` (`*` in the project slot reads across all of
+your projects). The MCP server **refuses a request without one** rather than
+picking a default — the alternative is guessing whose memory you meant, which is
+the cross-user read the whole scope model exists to prevent.
+
+With `DAI_BRAIN_SCOPE` unset, the CLI says so and does not load the server:
+
+```
+[Warning] [dai-brain] mcpServers.dai-brain: Missing environment variables: DAI_BRAIN_SCOPE
+```
+
+### Things that will confuse you once
+
+- **The server name sets the tool prefix.** Named `dai-brain`, the tools are
+  `mcp__dai-brain__memory_search` and so on. Name it `memory` and they match
+  what the Gateway allows (`mcp__memory__*`). Either is fine — just be
+  consistent with whatever you pass to `--allowedTools`.
+- **`claude mcp list` shows project servers as "Pending approval"** even when
+  they work. That listing does not consult `enableAllProjectMcpServers`; a real
+  session does. Test with an actual run, not the list.
+- **This is Core's port (8082), not the Gateway's (8080).** The CLI talks to MCP
+  directly. It gets memory, but not the Gateway's pre-fetch, conversation
+  history or write-back — those belong to the chat UI.
+
+### Scripted use
+
+To pin exactly one server and ignore whatever else is configured on the machine,
+which is what the Gateway does:
+
+```bash
+cat > /tmp/dai-mcp.json <<'JSON'
+{ "mcpServers": { "memory": { "type": "http", "url": "http://localhost:8082/mcp",
+  "headers": { "X-Scope": "acme/me/daibrain" } } } }
+JSON
+
+claude -p "what did we decide about the database?" \
+  --mcp-config /tmp/dai-mcp.json --strict-mcp-config \
+  --allowedTools "mcp__memory__memory_search,mcp__memory__memory_write"
+```
+
+`--strict-mcp-config` is the load-bearing flag: without it the CLI merges in the
+machine's own MCP servers.
+
 
 ## Retrieval
 
