@@ -18,6 +18,14 @@ export interface GatewayConfig {
   /** Skips JWT verification and uses a fixed scope. Local development only. */
   devScope: string | null;
   uiRoot: string;
+  /**
+   * Extra MCP servers to give the runner, as a path to a JSON file the
+   * operator wrote. Never per-request: a web user naming an MCP server is a
+   * web user choosing what the agent may reach.
+   */
+  extraMcpConfigPath: string | null;
+  /** Tool names from those servers the model may call. Explicit, so it audits. */
+  extraAllowedTools: string[];
   writebackEnabled: boolean;
   writebackPollMs: number;
   writebackModel: string;
@@ -63,6 +71,9 @@ export function loadGatewayConfig(env = process.env): GatewayConfig {
     jwtSecret: secret,
     devScope,
     uiRoot: env.GATEWAY_UI_ROOT ?? '',
+    extraMcpConfigPath: env.GATEWAY_EXTRA_MCP_CONFIG || null,
+    extraAllowedTools: (env.GATEWAY_EXTRA_ALLOWED_TOOLS ?? '')
+      .split(',').map((t) => t.trim()).filter(Boolean),
     writebackEnabled: env.GATEWAY_WRITEBACK !== 'false',
     writebackPollMs: int('GATEWAY_WRITEBACK_POLL_MS', 5_000, env),
     writebackModel: env.GATEWAY_WRITEBACK_MODEL ?? 'claude-haiku-4-5-20251001',

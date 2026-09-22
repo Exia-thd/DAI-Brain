@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessByStdio } from 'node:child_process';
 import type { Readable } from 'node:stream';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { SCOPE_HEADER, formatScopeHeader } from '@dai-brain/shared';
@@ -22,12 +22,29 @@ const KILL_GRACE_MS = 3_000;
 type RunnerChild = ChildProcessByStdio<null, Readable, Readable>;
 
 /**
+ * The memory tools, always allowed.
+ *
+ * The server is named `memory`, which is what sets this prefix, what
+ * --allowedTools matches, and what the stream translator keys citations off.
+ * Changing the name means changing all three.
+ */
+const MEMORY_TOOLS = [
+  'mcp__memory__memory_search',
+  'mcp__memory__memory_graph_explore',
+  'mcp__memory__memory_get',
+  'mcp__memory__memory_write',
+];
+
+type McpServers = Record<string, unknown>;
+
+/**
  * Runs one turn by spawning `claude -p`.
  *
  * The flags are the contract:
  *   --output-format stream-json --verbose   one JSON object per line, streamed
- *   --mcp-config --strict-mcp-config        exactly our memory server, nothing
- *                                           the user's own config might add
+ *   --mcp-config --strict-mcp-config        exactly the servers the operator
+ *                                           chose, never whatever the host
+ *                                           machine happens to have configured
  *   --allowedTools                          only the four memory tools, so a
  *                                           prompt cannot talk the model into
  *                                           reading the host filesystem
@@ -36,7 +53,10 @@ type RunnerChild = ChildProcessByStdio<null, Readable, Readable>;
  *
  * `--strict-mcp-config` is the load-bearing one. Without it the CLI merges the
  * machine's own MCP servers into a session serving a web user, which is a hole
- * that does not announce itself.
+ * that does not announce itself. It has never meant "memory only" -- it means
+ * the operator decides, so extra servers arrive through
+ * GATEWAY_EXTRA_MCP_CONFIG and their tools through GATEWAY_EXTRA_ALLOWED_TOOLS,
+ * rather than by whatever a developer once ran `claude mcp add` for.
  */
 export class ClaudeCliRunner implements Runner {
   readonly name = 'claude-cli';
@@ -65,7 +85,7 @@ export class ClaudeCliRunner implements Runner {
         '--mcp-config', mcpConfigPath,
         '--strict-mcp-config',
         '--allowedTools',
-        'mcp__memory__memory_search,mcp__memory__memory_graph_explore,mcp__memory__memory_get,mcp__memory__memory_write',
+        [...MEMORY_TOOLS, ...this.config.extraAllowedTools].join(','),
         '--append-system-prompt', request.systemPrompt,
       ];
       if (this.config.model) args.push('--model', this.config.model);
@@ -189,13 +209,58 @@ export class ClaudeCliRunner implements Runner {
     timer.unref();
   }
 
+  /**
+   * Extra MCP servers, read once from a file the operator wrote.
+   *
+   * Cached because it is deployment configuration, not per-request input, and
+   * re-reading it on every turn would let a mid-flight edit hand two
+   * concurrent conversations different tool sets.
+   *
+   * A failure here is loud rather than silent. An operator who configured Jira
+   * and got a session with no Jira would debug the prompt for an hour before
+   * suspecting the config file.
+   */
+  private async extraServers(): Promise<McpServers> {
+    if (!this.config.extraMcpConfigPath) return {};
+    if (this.extraCache) return this.extraCache;
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(await readFile(this.config.extraMcpConfigPath, 'utf8'));
+    } catch (err) {
+      throw new RunnerError(
+        `GATEWAY_EXTRA_MCP_CONFIG (${this.config.extraMcpConfigPath}) could not be read: `
+        + `${(err as Error).message}`,
+        'spawn_failed',
+      );
+    }
+
+    const servers = (parsed as { mcpServers?: unknown })?.mcpServers;
+    if (typeof servers !== 'object' || servers === null || Array.isArray(servers)) {
+      throw new RunnerError(
+        `GATEWAY_EXTRA_MCP_CONFIG (${this.config.extraMcpConfigPath}) must be `
+        + '{"mcpServers": { ... }}',
+        'spawn_failed',
+      );
+    }
+
+    this.extraCache = servers as McpServers;
+    return this.extraCache;
+  }
+
+  private extraCache: McpServers | null = null;
+
   private async writeMcpConfig(request: RunRequest, configDir: string): Promise<string> {
     const path = join(configDir, 'mcp.json');
+    const extra = await this.extraServers();
+
     await writeFile(path, JSON.stringify({
       mcpServers: {
-        // The server name decides the tool prefix the model sees
-        // (mcp__memory__memory_search), which is also what --allowedTools and
-        // the stream translator match on. Changing it means changing all three.
+        // Extra servers first, so `memory` below cannot be shadowed. Letting a
+        // config file redefine it would point the memory tools at somebody
+        // else's endpoint -- which would be handed this user's scope header on
+        // the next search.
+        ...extra,
         memory: {
           type: 'http',
           url: this.config.mcpUrl,
