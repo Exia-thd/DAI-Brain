@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DAI Brain</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div id="app">
+  <aside class="sidebar">
+    <header class="brand">
+      <h1>DAI Brain</h1>
+      <button id="new-chat" class="ghost" title="New conversation">+ New</button>
+    </header>
+    <nav class="tabs">
+      <button class="tab active" data-view="chat">Chat</button>
+      <button class="tab" data-view="memory">Memory</button>
+    </nav>
+    <div id="conversation-list" class="conversations"></div>
+    <footer class="status"><span id="health">connecting…</span></footer>
+  </aside>
+
+  <main id="view-chat" class="view active">
+    <div id="messages" class="messages">
+      <div class="empty">
+        <h2>Ask anything</h2>
+        <p>Answers are grounded in what you have told DAI Brain before. Citations show which memories were used.</p>
+      </div>
+    </div>
+    <form id="composer" class="composer">
+      <textarea id="input" rows="1" placeholder="Ask a question…  (Enter to send, Shift+Enter for a newline)"></textarea>
+      <button id="send" type="submit">Send</button>
+      <button id="cancel" type="button" class="danger" hidden>Stop</button>
+    </form>
+  </main>
+
+  <main id="view-memory" class="view">
+    <div class="memory-toolbar">
+      <input id="memory-query" type="search" placeholder="Search memory…">
+      <select id="memory-type">
+        <option value="">all types</option>
+        <option value="decision">decision</option>
+        <option value="fact">fact</option>
+        <option value="preference">preference</option>
+        <option value="procedure">procedure</option>
+        <option value="note">note</option>
+        <option value="artifact">artifact</option>
+      </select>
+      <label class="check"><input id="memory-superseded" type="checkbox"> show superseded</label>
+      <button id="memory-refresh" class="ghost">Refresh</button>
+    </div>
+    <div id="fusion-report" class="fusion" hidden></div>
+    <div id="memory-list" class="memory-list"></div>
+  </main>
+
+  <aside id="detail" class="detail" hidden>
+    <header>
+      <h3 id="detail-title">Memory</h3>
+      <button id="detail-close" class="ghost">×</button>
+    </header>
+    <div id="detail-body"></div>
+  </aside>
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

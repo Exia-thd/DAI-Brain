@@ -8,6 +8,12 @@
       "path": "./core"
     },
     {
+      "path": "./mcp"
+    },
+    {
+      "path": "./gateway"
+    },
+    {
       "path": "./eval"
     }
   ]

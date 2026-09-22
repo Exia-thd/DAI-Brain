@@ -1,0 +1,13 @@
+export { loadGatewayConfig, type GatewayConfig } from './config.js';
+export { startGateway, createGatewayRouter, GATEWAY_VERSION, type Gateway } from './server.js';
+export { startChat, buildSystemPrompt, type ChatDeps, type ChatTurn } from './chat.js';
+export { CoreClient, CoreUnavailable } from './core-client.js';
+export { Semaphore } from './runner/semaphore.js';
+export { ClaudeCliRunner, RunnerError } from './runner/claude-cli.js';
+export type { Runner, RunRequest, StreamLine } from './runner/types.js';
+export { StreamTranslator, parseCitations } from './sse/translate.js';
+export { SessionStore, type Conversation } from './sessions/store.js';
+export { signJwt, verifyJwt, scopeFor, type Claims } from './auth/jwt.js';
+export { authenticate, type Principal } from './auth/middleware.js';
+export { WritebackWorker, type WorkerStats } from './writeback/worker.js';
+export { extractFacts, parseFacts, ExtractionError, type ExtractedFact } from './writeback/extract.js';
