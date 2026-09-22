@@ -1,0 +1,14 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./shared"
+    },
+    {
+      "path": "./core"
+    },
+    {
+      "path": "./eval"
+    }
+  ]
+}

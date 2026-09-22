@@ -1,0 +1,6 @@
+packages:
+  - shared
+  - core
+  - mcp
+  - gateway
+  - eval

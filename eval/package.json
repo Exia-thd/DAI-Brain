@@ -1,0 +1,12 @@
+{
+  "name": "@dai-brain/eval",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "tsc -b", "start": "node dist/run.js" },
+  "dependencies": {
+    "@dai-brain/core": "workspace:*",
+    "@dai-brain/shared": "workspace:*"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "@dai-brain/core",
+  "version": "0.1.0",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "files": ["dist", "migrations"],
+  "scripts": { "build": "tsc -b", "start": "node dist/server-cli.js" },
+  "dependencies": {
+    "@dai-brain/shared": "workspace:*",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.10"
+  },
+  "optionalDependencies": {
+    "@huggingface/transformers": "^3.3.0"
+  }
+}

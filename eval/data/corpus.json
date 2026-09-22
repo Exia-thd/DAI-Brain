@@ -1,0 +1,49 @@
+{
+  "note": "The golden corpus. Ids are stable and referenced by queries.json, so an item's text may be edited but its id must not change.",
+  "items": [
+    { "ref": "c01", "type": "decision", "content": "We chose PostgreSQL with pgvector for Brain Core storage instead of Neo4j, because the graph stays small and running one database is less operational work than two.", "entities": ["Brain Core", "PostgreSQL", "pgvector", "Neo4j"] },
+    { "ref": "c02", "type": "decision", "content": "Brain Gateway spawns `claude -p` as a subprocess per request rather than calling the Messages API directly, so the CLI's MCP wiring and session resume come for free.", "entities": ["Brain Gateway", "Claude CLI", "MCP"] },
+    { "ref": "c03", "type": "decision", "content": "Scope is decided only in the Gateway and travels to Core in the X-Scope header. No model output may ever set a scope.", "entities": ["Brain Gateway", "scope", "Brain Core"] },
+    { "ref": "c04", "type": "decision", "content": "Retrieval uses reciprocal rank fusion over three branches (vector, full-text, graph) rather than a weighted score blend, because the branch scores share no scale.", "entities": ["RRF", "retrieval", "Brain Core"] },
+    { "ref": "c05", "type": "decision", "content": "The write-back queue is a Postgres table polled by a worker. We deliberately did not add Redis or RabbitMQ for a queue that sees fewer than a thousand jobs a day.", "entities": ["write-back", "PostgreSQL", "queue"] },
+    { "ref": "c06", "type": "decision", "content": "Memory items are never deleted by the system. A newer item sets superseded_by on the older one, so every change is traceable and reversible.", "entities": ["memory item", "superseded_by"] },
+    { "ref": "c07", "type": "decision", "content": "The UI is plain HTML and JavaScript with no build step, because a build pipeline for a debugging tool costs more than it returns.", "entities": ["Brain UI"] },
+    { "ref": "c08", "type": "decision", "content": "Embeddings default to the hash provider so a fresh checkout works offline; transformers is opt-in via DAI_EMBEDDING_PROVIDER.", "entities": ["embeddings", "Brain Core"] },
+    { "ref": "c09", "type": "decision", "content": "Full-text search uses the 'simple' Postgres text config, not 'english', because the store holds Vietnamese and English side by side and an English stemmer mangles Vietnamese.", "entities": ["full-text search", "PostgreSQL", "Vietnamese"] },
+    { "ref": "c10", "type": "decision", "content": "Dùng JWT HS256 cho auth giữa UI và Gateway, không dùng session cookie, vì Gateway là stateless và có thể chạy nhiều instance.", "entities": ["JWT", "Brain Gateway", "auth"] },
+
+    { "ref": "c11", "type": "fact", "content": "The p95 latency target for the Core /search endpoint is 500 milliseconds.", "entities": ["Brain Core", "latency"] },
+    { "ref": "c12", "type": "fact", "content": "The Gateway pre-fetch calls Core /search with a budget of about 1000 tokens and injects the result through --append-system-prompt.", "entities": ["Brain Gateway", "pre-fetch", "Brain Core"] },
+    { "ref": "c13", "type": "fact", "content": "The MCP server exposes exactly four tools: memory_search, memory_graph_explore, memory_get and memory_write.", "entities": ["Brain MCP", "MCP"] },
+    { "ref": "c14", "type": "fact", "content": "Concurrent claude subprocesses are capped by a semaphore; the default limit is 8 and it is set with GATEWAY_MAX_CONCURRENCY.", "entities": ["Brain Gateway", "Claude CLI", "semaphore"] },
+    { "ref": "c15", "type": "fact", "content": "Each conversation gets its own working directory and its own CLAUDE_CONFIG_DIR so one session's config cannot leak into another's.", "entities": ["Brain Gateway", "session", "Claude CLI"] },
+    { "ref": "c16", "type": "fact", "content": "The RRF constant k is 60, the value used by the original reciprocal rank fusion paper.", "entities": ["RRF", "retrieval"] },
+    { "ref": "c17", "type": "fact", "content": "Branch weights are vector 1.0, full-text 0.9 and graph 0.6.", "entities": ["RRF", "retrieval"] },
+    { "ref": "c18", "type": "fact", "content": "Graph expansion runs at most 3 hops and stops at 200 nodes, whichever comes first.", "entities": ["graph", "retrieval"] },
+    { "ref": "c19", "type": "fact", "content": "The default dedupe threshold is cosine similarity 0.93; above it the reconciler treats two items as the same memory restated.", "entities": ["reconciler", "write-back", "dedupe"] },
+    { "ref": "c20", "type": "fact", "content": "Ngưỡng confidence tối thiểu cho item do write-back tạo ra là 0.6; thấp hơn thì bị loại bỏ, không lưu.", "entities": ["write-back", "confidence"] },
+
+    { "ref": "c21", "type": "procedure", "content": "To run the eval set: pnpm build, then pnpm eval. It prints recall@5, recall@10, MRR@10 and the p50/p95 latency of /search.", "entities": ["eval", "retrieval"] },
+    { "ref": "c22", "type": "procedure", "content": "To apply database migrations run `pnpm migrate`. It picks pgvector automatically when the extension is installable and falls back to real[] storage otherwise.", "entities": ["migrations", "pgvector", "PostgreSQL"] },
+    { "ref": "c23", "type": "procedure", "content": "To bring everything up locally: docker compose up in infra/, which starts Postgres, Core, MCP and Gateway.", "entities": ["docker compose", "infra"] },
+    { "ref": "c24", "type": "procedure", "content": "To undo one conversation's write-back, send DELETE /conversations/{id}/memory to Core. It removes every item that run created and nothing a person wrote.", "entities": ["write-back", "undo", "Brain Core"] },
+    { "ref": "c25", "type": "procedure", "content": "To debug bad retrieval, open the memory explorer in the UI, search the same query, and read the fusion report to see which branch was degraded.", "entities": ["Brain UI", "memory explorer", "retrieval"] },
+    { "ref": "c26", "type": "procedure", "content": "Để thêm một embedding provider mới, implement interface EmbeddingProvider trong core/src/embed và đăng ký nó trong createEmbeddingProvider.", "entities": ["embeddings", "Brain Core"] },
+
+    { "ref": "c27", "type": "preference", "content": "Prefer TypeScript over Python for every DAI Brain service, so one type system covers the whole stack.", "entities": ["TypeScript", "DAI Brain"] },
+    { "ref": "c28", "type": "preference", "content": "Keep dependencies minimal. A hand-written 120-line router is preferred over pulling in Express.", "entities": ["dependencies", "DAI Brain"] },
+    { "ref": "c29", "type": "preference", "content": "Tôi thích comment giải thích lý do (why) hơn là mô tả lại code (what).", "entities": ["code style"] },
+    { "ref": "c30", "type": "preference", "content": "Error messages should say what to do next, not only what went wrong.", "entities": ["code style", "errors"] },
+
+    { "ref": "c31", "type": "note", "content": "Considered Qdrant and Weaviate for the vector store before settling on pgvector. Both were fine; neither justified a second datastore.", "entities": ["pgvector", "Qdrant", "Weaviate"] },
+    { "ref": "c32", "type": "note", "content": "The hash embedder is lexical only. Recall numbers measured with it are a floor, not a forecast of production quality.", "entities": ["embeddings", "eval"] },
+    { "ref": "c33", "type": "note", "content": "Spawning the CLI costs a few seconds of startup per request. If that becomes the bottleneck, swap the Runner for the Claude Agent SDK; the UI will not notice.", "entities": ["Brain Gateway", "Claude CLI", "latency"] },
+    { "ref": "c34", "type": "note", "content": "Write-back with a low confidence floor produced junk memories in early testing. Start strict and loosen with evidence.", "entities": ["write-back", "confidence"] },
+    { "ref": "c35", "type": "note", "content": "Tree-sitter grammars from the old plugin are not used by Brain Core. Core indexes conversation memory, not source code.", "entities": ["Brain Core", "plugin"] },
+    { "ref": "c36", "type": "artifact", "content": "infra/docker-compose.yml defines four services: postgres (pgvector/pgvector:pg16), core, mcp and gateway, on a shared bridge network.", "entities": ["docker compose", "infra", "pgvector"] },
+    { "ref": "c37", "type": "artifact", "content": "shared/src/events.ts defines the six SSE event types: message.delta, tool.start, tool.result, citation, message.done and error.", "entities": ["events", "SSE", "Brain UI"] },
+    { "ref": "c38", "type": "artifact", "content": "core/migrations/001_init.sql creates memory_items, entities, relations, item_entities, conversations, messages and writeback_jobs.", "entities": ["migrations", "Brain Core"] },
+    { "ref": "c39", "type": "fact", "content": "The privacy filter rejects an item outright when it contains a provider API key, and masks assignment-shaped secrets like DB_PASSWORD=... instead.", "entities": ["privacy filter", "write-back"] },
+    { "ref": "c40", "type": "fact", "content": "Search results are cached for 30 seconds keyed by scope plus query plus options, and the cache is cleared on every write.", "entities": ["cache", "Brain Core", "retrieval"] }
+  ]
+}
