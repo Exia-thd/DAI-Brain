@@ -173,6 +173,49 @@ claude -p "what did we decide about the database?" \
 machine's own MCP servers.
 
 
+## Bootstrapping from a repository
+
+A fresh store knows nothing, and conversation memory only accumulates by having
+conversations. A repository already holds months of reasoning — it is just not
+in a form anything can retrieve.
+
+```bash
+pnpm ingest:repo /path/to/repo --scope acme/me/myproject --dry-run   # look first
+pnpm ingest:repo /path/to/repo --scope acme/me/myproject
+```
+
+It reads the part of a repository that is **not** recoverable by reading the
+code: ADRs, CONTRIBUTING, CLAUDE.md, architecture docs, README sections that
+argue for a choice, and commit messages with a body. A file's intent sets the
+type (an ADR is a `decision`, CLAUDE.md is a `preference`), and a section that
+argues for something is promoted to `decision` wherever it lives.
+
+Everything goes through the normal write path, so the privacy filter and the
+reconciler both apply. Re-running is safe: unchanged sections come back
+`duplicate`, an edited one supersedes its older phrasing. Every item keeps its
+provenance — `repo:docs/adr/0001-use-rrf.md#use-rrf`, `git:3d05af4c9579`.
+
+### What it deliberately does not do
+
+It does not index code. Symbols, call graphs and file structure are derived
+data: they go stale on the next commit, and an agent with the repo checked out
+can read them directly and get today's answer instead of last week's.
+
+If you want code-structure questions answered — what calls this, what breaks if
+I change it — the [DAI memory layer plugin](https://github.com/Exia-thd/DAI-memory-layer-plugin)
+already does that across 29 languages, and the two run side by side as separate
+MCP servers. Claude gets `mcp__dai-brain__memory_*` for cross-project
+conversation memory and `dai_memory_*` for this repo's code graph.
+
+### Why a CLI and not an endpoint
+
+An HTTP endpoint taking a server-side filesystem path would let anyone holding
+a token turn any file the Core process can read into a memory they can then
+retrieve — arbitrary file disclosure wearing an ingestion API's clothes. The
+operator running the CLI already has the filesystem, so it gives away nothing
+new.
+
+
 ## Retrieval
 
 `POST /search` runs five steps:

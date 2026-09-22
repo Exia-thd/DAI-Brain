@@ -26,6 +26,10 @@ export type { BranchResult } from './retrieval/branch.js';
 
 export { redact, looksSecret, RULES, type RedactResult, type Rule } from './ingest/redact.js';
 export { reconcile, type ReconcileInput, type ReconcileOptions } from './ingest/reconcile.js';
+export {
+  scanRepo, scanDocs, scanCommits, sections, entitiesOf,
+  type RepoItem, type ScanOptions, type Section, type Commit,
+} from './ingest/repo.js';
 
 export * from './storage/items.js';
 export * from './storage/entities.js';

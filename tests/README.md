@@ -24,4 +24,5 @@ any order.
 | `jwt.test.js` | Signature verification, `alg: none`, expiry, and that a token cannot reach a project it was not granted |
 | `semaphore.test.js` | Concurrency limits, cancellation while queued, no double-release |
 | `translate.test.js` | Claude's stream → the six UI events, including citations and unknown-line tolerance |
+| `repo-ingest.test.js` | Markdown sectioning (fences are not headings), what is ingested and what is skipped, and that re-running does not duplicate |
 | `writeback.test.js` | Extraction parsing against whatever a model emits, plus reconciliation and undo |

@@ -169,6 +169,48 @@ claude -p "hồi trước mình chốt dùng database nào?" \
 `--strict-mcp-config` là cờ quan trọng nhất: thiếu nó, CLI sẽ trộn thêm các MCP
 server vốn có của máy vào session.
 
+## Mồi dữ liệu từ một repository
+
+Store mới tinh thì không biết gì, mà memory hội thoại chỉ tích lũy được bằng
+cách... trò chuyện. Trong khi đó một repository đã chứa sẵn hàng tháng lý luận —
+chỉ là chưa ở dạng nào truy xuất được.
+
+```bash
+pnpm ingest:repo /duong/dan/repo --scope acme/me/myproject --dry-run   # xem trước
+pnpm ingest:repo /duong/dan/repo --scope acme/me/myproject
+```
+
+Nó đọc đúng phần **không** thể tái tạo bằng cách đọc code: ADR, CONTRIBUTING,
+CLAUDE.md, tài liệu kiến trúc, những đoạn README thực sự lập luận cho một lựa
+chọn, và commit message có phần body. Ý đồ của file quyết định type (ADR là
+`decision`, CLAUDE.md là `preference`), còn một section có lập luận thì được
+nâng lên `decision` dù nó nằm ở file nào.
+
+Mọi thứ đi qua đường ghi bình thường, nên privacy filter và reconciler đều có
+hiệu lực. Chạy lại nhiều lần là an toàn: section không đổi trả về `duplicate`,
+section đã sửa sẽ supersede bản cũ. Mỗi item giữ nguyên nguồn gốc —
+`repo:docs/adr/0001-use-rrf.md#use-rrf`, `git:3d05af4c9579`.
+
+### Cái nó cố tình không làm
+
+Nó không index code. Symbol, call graph và cấu trúc file là **dữ liệu dẫn
+xuất**: stale ngay ở commit kế tiếp, mà một agent đang có repo trong tay thì đọc
+thẳng được và nhận câu trả lời của hôm nay thay vì của tuần trước.
+
+Nếu bạn muốn hỏi về cấu trúc code — hàm này ai gọi, sửa chỗ này thì hỏng chỗ nào
+— thì [DAI memory layer plugin](https://github.com/Exia-thd/DAI-memory-layer-plugin)
+đã làm việc đó cho 29 ngôn ngữ, và hai hệ chạy song song được như hai MCP server
+riêng. Claude sẽ có `mcp__dai-brain__memory_*` cho memory hội thoại xuyên
+project, và `dai_memory_*` cho code graph của repo hiện tại.
+
+### Tại sao là CLI chứ không phải endpoint
+
+Một HTTP endpoint nhận đường dẫn filesystem phía server sẽ cho phép bất kỳ ai
+cầm token biến mọi file mà tiến trình Core đọc được thành một memory rồi truy
+xuất lại — lộ file tùy ý, khoác áo một API ingestion. Người vận hành chạy CLI
+thì vốn đã có filesystem rồi, nên nó không trao thêm quyền gì.
+
+
 ## Retrieval
 
 `POST /search` chạy năm bước:
