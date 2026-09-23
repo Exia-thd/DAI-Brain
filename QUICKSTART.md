@@ -176,7 +176,7 @@ Try these in order:
 1. `Hello` → text streams in.
 2. `Remember this: this project uses PostgreSQL rather than MongoDB, because we
    need transactions.` → a **saving to memory** chip appears.
-3. Click **+ New**, then ask `What database does this project use, and why?`
+3. Click **+ New chat**, then ask `What database does this project use, and why?`
    → a **searching memory** chip appears, and the answer gives the reason back.
 
 Step 3 is the real test: a fresh conversation with no context, answered from
@@ -288,7 +288,7 @@ tells you which branch contributed nothing, and **why**.
 | `port 8080 is already in use` | an earlier run is still alive | close that terminal, or `pnpm chat --port 8090` |
 | No memory tools at all | the plugin setup has not finished | run `dai-memory --help`; the MCP command is `serve`, not `mcp` |
 | `No memory store found at or above ...` | the turn ran somewhere without a store | pass `--dir` pointing at the project you ran `dai-memory init` in |
-| `This conversation has spent $5.00...` | the cost ceiling | click **+ New**, or `pnpm chat --budget 20` |
+| `This conversation has spent $5.00...` | the cost ceiling | click **+ New chat**, or `pnpm chat --budget 20` |
 | The model says it does not trust a memory result | an MCP server is declared but not running | remove it from the config; a declared-but-dead server is worse than none |
 | `vectorIndex: degraded — legacy IVFFlat` | the old index | `pnpm migrate` |
 | Blank UI | not built | `pnpm build`, then restart |
