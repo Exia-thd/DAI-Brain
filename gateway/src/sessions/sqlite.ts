@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { ConversationSummary, Scope, WriteScope } from '@dai-brain/shared';
-import type { Conversation, SessionStore, TranscriptMessage } from './types.js';
+import type { Conversation, SessionStore, TranscriptMessage, TurnUsage } from './types.js';
 import { workdirFor } from './workdir.js';
 
 /**
@@ -57,6 +57,16 @@ export class SqliteSessionStore implements SessionStore {
       );
       CREATE INDEX IF NOT EXISTS messages_conversation_idx
         ON messages (conversation_id, id);
+      CREATE TABLE IF NOT EXISTS turn_usage (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        input_tokens    INTEGER NOT NULL DEFAULT 0,
+        output_tokens   INTEGER NOT NULL DEFAULT 0,
+        cost_usd        REAL,
+        created_at      TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS turn_usage_conversation_idx
+        ON turn_usage (conversation_id, id);
     `);
   }
 
@@ -119,6 +129,21 @@ export class SqliteSessionStore implements SessionStore {
       `SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY id`,
     ).all(conversationId) as { role: string; content: string }[];
     return rows.map((r) => ({ role: r.role as 'user' | 'assistant', content: r.content }));
+  }
+
+  async recordUsage(conversationId: string, usage: TurnUsage): Promise<void> {
+    this.db.prepare(
+      `INSERT INTO turn_usage (conversation_id, input_tokens, output_tokens, cost_usd, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).run(conversationId, usage.inputTokens, usage.outputTokens, usage.costUsd, this.now());
+  }
+
+  async spend(conversationId: string): Promise<{ costUsd: number; turns: number }> {
+    const row = this.db.prepare(
+      `SELECT coalesce(sum(cost_usd), 0) AS cost, count(*) AS turns
+         FROM turn_usage WHERE conversation_id = ?`,
+    ).get(conversationId) as { cost: number; turns: number };
+    return { costUsd: Number(row?.cost ?? 0), turns: Number(row?.turns ?? 0) };
   }
 
   async list(scope: Scope, limit = 50): Promise<ConversationSummary[]> {

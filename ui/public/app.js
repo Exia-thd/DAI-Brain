@@ -39,6 +39,9 @@ const state = {
   abort: null,
   /** id -> citation, so a chip clicked later can still be resolved. */
   citations: new Map(),
+  /** Running cost of the open conversation, shown in the status bar. */
+  spend: null,
+  costCeiling: 0,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -191,9 +194,11 @@ function handleEvent(event, view, toolNodes) {
     case 'message.done':
       state.conversationId = event.conversationId;
       if (event.usage) {
-        const cost = event.usage.costUsd != null ? `, $${event.usage.costUsd.toFixed(4)}` : '';
-        $('health').textContent =
-          `${event.usage.inputTokens} in / ${event.usage.outputTokens} out${cost}`;
+        state.spend = {
+          costUsd: (state.spend?.costUsd ?? 0) + (event.usage.costUsd ?? 0),
+          turns: (state.spend?.turns ?? 0) + 1,
+        };
+        showSpend();
       }
       break;
 
@@ -264,11 +269,29 @@ async function loadConversations() {
 async function openConversation(id) {
   const conversation = await api.get(`/conversations/${encodeURIComponent(id)}`);
   state.conversationId = id;
+  state.spend = conversation.spend ?? null;
+  state.costCeiling = conversation.costCeilingUsd ?? 0;
   $('messages').textContent = '';
   for (const message of conversation.messages) {
     addMessage(message.role === 'user' ? 'user' : 'assistant', message.content);
   }
+  showSpend();
   void loadConversations();
+}
+
+/**
+ * Keeps the running cost in front of the person spending it.
+ *
+ * In the status bar rather than behind a menu: the failure this exists for is
+ * not knowing a conversation was expensive until the quota is gone.
+ */
+function showSpend() {
+  if (!state.spend || state.spend.costUsd <= 0) return;
+  const ceiling = state.costCeiling > 0 ? ` / $${state.costCeiling.toFixed(2)}` : '';
+  const node = $('health');
+  node.textContent = `$${state.spend.costUsd.toFixed(4)}${ceiling} · ${state.spend.turns} turns`;
+  node.style.color = state.costCeiling > 0 && state.spend.costUsd > state.costCeiling * 0.8
+    ? 'var(--warn)' : '';
 }
 
 // ---------------------------------------------------------------------------
@@ -476,6 +499,7 @@ function init() {
 
   $('new-chat').addEventListener('click', () => {
     state.conversationId = null;
+    state.spend = null;
     $('messages').textContent = '';
     const empty = el('div', 'empty');
     empty.append(el('h2', null, 'Ask anything'), el('p', null,

@@ -13,6 +13,13 @@ export interface TranscriptMessage {
   content: string;
 }
 
+export interface TurnUsage {
+  inputTokens: number;
+  outputTokens: number;
+  /** Null when the runner did not report one. */
+  costUsd: number | null;
+}
+
 /**
  * Where conversations live.
  *
@@ -35,6 +42,16 @@ export interface SessionStore {
   setTitle(conversationId: string, title: string): Promise<void>;
   appendMessage(conversationId: string, role: 'user' | 'assistant', content: string): Promise<void>;
   messages(conversationId: string): Promise<TranscriptMessage[]>;
+  /**
+   * Records what a turn cost.
+   *
+   * Kept per turn rather than as a running total, because a total cannot
+   * answer "which conversation ran away" -- which is the question anyone asks
+   * after a surprising bill.
+   */
+  recordUsage(conversationId: string, usage: TurnUsage): Promise<void>;
+  /** What this conversation has cost so far, for the budget check and the UI. */
+  spend(conversationId: string): Promise<{ costUsd: number; turns: number }>;
   list(scope: Scope, limit?: number): Promise<ConversationSummary[]>;
   delete(scope: Scope, id: string): Promise<boolean>;
   close(): Promise<void>;

@@ -63,8 +63,11 @@ cat > plugin-mcp.json <<'JSON'
 { "mcpServers": { "dai-memory": { "command": "dai-memory", "args": ["mcp"] } } }
 JSON
 
-# 3. Run the chat window.
+# 3. Run the chat window. One command; it writes plugin-mcp.json if missing.
 pnpm install && pnpm build
+pnpm chat --project myproject
+
+# Or spell every variable out yourself:
 CORE_URL=none \
 GATEWAY_DEV_SCOPE=me/me/myproject \
 GATEWAY_MAX_CONCURRENCY=1 \
@@ -111,6 +114,44 @@ If the terminal is enough, you need none of it. `/plugin install dai-memory`
 gives you memory inside Claude Code today, with no Gateway, no UI and no
 database. The setup above is worth it only if you specifically want the chat
 window.
+
+
+## What it costs, and what stops it
+
+Every message spawns a whole Claude CLI session. That is a real charge against
+a real account, and it is worth saying plainly because during this project's
+own testing it quietly consumed the author's subscription quota until the
+limit hit.
+
+Three things follow from that, and all three are on by default now:
+
+- **A ceiling per conversation.** `GATEWAY_MAX_CONVERSATION_COST_USD` defaults
+  to `5`. Over it, the Gateway refuses the turn *before* spawning anything —
+  after the process starts the money is already spent. Per conversation rather
+  than global, because a runaway is almost always one conversation in a loop
+  and a global cap would take everything else down with it. `0` disables it.
+- **Every turn is recorded**, per turn rather than as a total, because a total
+  cannot answer the only question asked afterwards: which conversation ran
+  away. The UI shows the running cost in the status bar, and turns it amber
+  past 80% of the ceiling.
+- **Two warnings at startup.** Unset `CLAUDE_MODEL` means every turn runs on
+  the CLI's default — the expensive one. Unset `ANTHROPIC_API_KEY` means the
+  runner bills whatever account the CLI is logged into, which for most people
+  is their own subscription.
+
+For a personal chat window:
+
+```bash
+export ANTHROPIC_API_KEY=...          # separate billing from your own quota
+export CLAUDE_MODEL=claude-sonnet-5   # or cheaper
+```
+
+The API key matters even at one user: it keeps a bug in the Gateway from
+locking you out of the Claude Code you were using to fix it.
+
+**Write-back doubles the bill** — one extra model call per conversation. It is
+off in the personal setup and on in the full one; `GATEWAY_WRITEBACK=false`
+turns it off there too.
 
 
 ## Why a database at all
@@ -628,7 +669,8 @@ data.
 `CLAUDE_MODEL`, `GATEWAY_MAX_CONCURRENCY`, `GATEWAY_REQUEST_TIMEOUT_MS`,
 `GATEWAY_SESSION_ROOT`, `GATEWAY_PREFETCH_TOKENS`, `GATEWAY_JWT_SECRET`,
 `GATEWAY_DEV_SCOPE`, `GATEWAY_WRITEBACK*`, `GATEWAY_EXTRA_MCP_CONFIG`,
-`GATEWAY_EXTRA_ALLOWED_TOOLS`, `GATEWAY_SQLITE_PATH`. Leaving `DATABASE_URL`
+`GATEWAY_EXTRA_ALLOWED_TOOLS`, `GATEWAY_SQLITE_PATH`,
+`GATEWAY_MAX_CONVERSATION_COST_USD`. Leaving `DATABASE_URL`
 unset selects the SQLite store; `CORE_URL=none` drops Brain Core and Brain MCP.
 
 **MCP** — `MCP_PORT`, `CORE_URL`.

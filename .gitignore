@@ -11,3 +11,4 @@ dist/
 # is pointed at ./sessions.
 /sessions/
 *.log
+plugin-mcp.json

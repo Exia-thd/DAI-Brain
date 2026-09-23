@@ -17,7 +17,8 @@
     "mcp": "node mcp/dist/server-cli.js",
     "gateway": "node gateway/dist/server-cli.js",
     "mcp:add": "node scripts/mcp-add.mjs",
-    "ingest:repo": "node core/dist/ingest/repo-cli.js"
+    "ingest:repo": "node core/dist/ingest/repo-cli.js",
+    "chat": "node scripts/start-personal.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

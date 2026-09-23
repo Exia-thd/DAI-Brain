@@ -1,5 +1,5 @@
 import {
-  errorEvent, type BrainEvent, type ChatRequest, type Scope, type WriteScope,
+  HttpError, errorEvent, type BrainEvent, type ChatRequest, type Scope, type WriteScope,
 } from '@dai-brain/shared';
 import type { GatewayConfig } from './config.js';
 import { CoreClient, CoreUnavailable } from './core-client.js';
@@ -79,10 +79,34 @@ export async function startChat(
 
   if (!conversation) throw new Error(`no conversation ${request.conversationId} in this scope`);
 
+  await assertWithinBudget(deps, conversation.id);
+
   const systemPrompt = await buildSystemPrompt(deps, scope, message);
   await deps.sessions.appendMessage(conversation.id, 'user', message);
 
   return { conversation, events: stream(deps, conversation, message, systemPrompt, signal) };
+}
+
+/**
+ * Refuses a turn that would push a conversation past its budget.
+ *
+ * Checked before the process is spawned, because after it is spawned the money
+ * is already spent. The ceiling is per conversation rather than global: a
+ * runaway is almost always one conversation in a loop, and a global cap would
+ * take everything else down with it.
+ */
+async function assertWithinBudget(deps: ChatDeps, conversationId: string): Promise<void> {
+  const limit = deps.config.maxConversationCostUsd;
+  if (limit <= 0) return;
+  const { costUsd, turns } = await deps.sessions.spend(conversationId);
+  if (costUsd < limit) return;
+  throw new HttpError(
+    402,
+    'forbidden',
+    `This conversation has spent $${costUsd.toFixed(2)} over ${turns} turns, which is at or above `
+    + `the $${limit.toFixed(2)} ceiling. Start a new conversation, or raise `
+    + 'GATEWAY_MAX_CONVERSATION_COST_USD.',
+  );
 }
 
 async function* stream(
@@ -108,6 +132,15 @@ async function* stream(
     for await (const line of lines) {
       for (const event of translator.translate(line)) {
         if (event.type === 'error') failed = true;
+        if (event.type === 'message.done') {
+          // Recorded before the event reaches the client, so a client that
+          // hangs up on the last frame still leaves the spend accounted for.
+          await deps.sessions.recordUsage(conversation.id, {
+            inputTokens: event.usage.inputTokens,
+            outputTokens: event.usage.outputTokens,
+            costUsd: event.usage.costUsd,
+          }).catch(() => {});
+        }
         yield event;
       }
     }
