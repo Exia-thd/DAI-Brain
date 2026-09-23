@@ -295,6 +295,31 @@ A branch that returns empty and says nothing is how a hybrid quietly decays
 into whichever branch still works. The memory explorer shows this report for
 every search, which makes it the fastest way to diagnose bad recall.
 
+### The vector index
+
+HNSW, not IVFFlat, and the difference is not a preference.
+
+IVFFlat has to be *trained*: it clusters the vectors already in the table into
+`lists` buckets, and a query at the default `probes = 1` scans exactly one
+bucket. Built at migration time the table is empty, so the centroids mean
+nothing. Measured on a 62-item store, an IVFFlat index the planner chose
+returned **1 row of 62** where an exact scan returned all 62 — and reported
+itself perfectly healthy while doing it.
+
+That is the worst shape a bug can take here: the branch does not fail, so it is
+never marked degraded, and every recall number downstream is measured against a
+fraction of the store.
+
+HNSW needs no training data, so it is correct on an empty table and stays
+correct as the store grows without anyone retuning `lists` and `probes`. Below
+pgvector 0.5 there is no HNSW, and the migration then builds **no** index at
+all: an exact scan is linear but complete, which is the right trade.
+
+`pnpm migrate` repairs an existing database — migration `002` drops the old
+index and rebuilds it. `/health` reports an IVFFlat index it finds as
+`degraded`, naming the fix.
+
+
 ### The token budget packer
 
 `maxTokens` is a hard cap. No single item may take more than 35% of it, so one
@@ -317,11 +342,11 @@ stops measuring anything.
 Current numbers, on the **hash** embedder (see below — these are a floor):
 
 ```
-all branches, no rerank      recall@5 83.3%   recall@10 90.4%
-                             MRR@10 0.843     nDCG@10 0.825    p95 8ms
-vector+fts only (graph off)  recall@5 81.1%   recall@10 89.3%   MRR@10 0.804
-all branches, 2-hop graph    recall@5 83.3%   recall@10 89.3%   MRR@10 0.831
-all branches + rerank        recall@5 83.3%   recall@10 89.3%   MRR@10 0.847
+all branches, no rerank      recall@5 84.4%   recall@10 90.7%
+                             MRR@10 0.839     p95 7ms
+vector+fts only (graph off)  recall@5 81.1%   recall@10 89.6%   MRR@10 0.804
+all branches, 2-hop graph    recall@5 84.4%   recall@10 89.6%   MRR@10 0.838
+all branches + rerank        recall@5 82.2%   recall@10 88.5%   MRR@10 0.847
 ```
 
 So graph expansion is worth about 4 points of MRR at one hop and nothing at

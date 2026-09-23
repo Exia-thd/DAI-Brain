@@ -50,7 +50,10 @@ CREATE INDEX IF NOT EXISTS memory_items_conversation_idx
 CREATE UNIQUE INDEX IF NOT EXISTS memory_items_dedupe_idx
   ON memory_items (tenant, user_id, project, content_hash);
 
-{{VECTOR_INDEX}}
+-- The ANN index is built by 002, not here. It has to be chosen from the
+-- installed pgvector version, and an index built at this point is built on an
+-- empty table -- which is exactly what went wrong with the IVFFlat one this
+-- replaced.
 
 CREATE TABLE IF NOT EXISTS entities (
   id          TEXT PRIMARY KEY,
