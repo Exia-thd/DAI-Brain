@@ -279,6 +279,9 @@ bạn biết nhánh nào không đóng góp và **tại sao**.
 | `ERR_UNKNOWN_BUILTIN_MODULE: node:sqlite` | Node < 22 | nâng Node, hoặc đặt `DATABASE_URL` để dùng Postgres |
 | `could not start claude` / `ENOENT` trên Windows | Node không spawn được `.cmd` | `npm root -g` rồi `set CLAUDE_BIN=%APPDATA%\npm\node_modules\@anthropic-ai\claude-code\cli.js` |
 | `port 8080 is already in use` | lần chạy trước còn sống | đóng cửa sổ terminal đó, hoặc `pnpm chat --port 8090` |
+| `No such tool available: Bash`, hoặc model đi đọc file thay vì đọc memory | memory server không khởi động được nên model đi tìm chỗ khác | dòng `[chat] dai-memory: N tools` lúc khởi động cho biết nó có lên hay không; nếu không, thông báo ngay dưới nói cách sửa |
+| `The embedding model is not downloaded` | plugin được copy về nhưng chưa chạy setup | `node <plugin>/bin/setup.mjs` — cần mạng và khoảng 130 MB |
+| `The dai-memory MCP server did not connect` hiện trong khung chat | cùng nguyên nhân, báo giữa lượt | như trên; câu trả lời bạn đang đọc **không** dựa trên memory |
 | Không thấy tool memory nào | plugin chưa cài xong | chạy `dai-memory --help`; lệnh MCP là `serve`, không phải `mcp` |
 | `No memory store found at or above ...` | lượt chat chạy ở thư mục không có store | truyền `--dir` trỏ đúng thư mục bạn đã chạy `dai-memory init` |
 | `This conversation has spent $5.00...` | chạm trần chi phí | bấm **+ New chat**, hoặc `pnpm chat --budget 20` |

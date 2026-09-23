@@ -286,6 +286,9 @@ tells you which branch contributed nothing, and **why**.
 | `ERR_UNKNOWN_BUILTIN_MODULE: node:sqlite` | Node older than 22 | upgrade Node, or set `DATABASE_URL` to use Postgres |
 | `could not start claude` / `ENOENT` on Windows | Node cannot spawn a `.cmd` | `npm root -g`, then `set CLAUDE_BIN=%APPDATA%\npm\node_modules\@anthropic-ai\claude-code\cli.js` |
 | `port 8080 is already in use` | an earlier run is still alive | close that terminal, or `pnpm chat --port 8090` |
+| `No such tool available: Bash`, or the model reads files instead of memory | the memory server did not start, so the model went looking elsewhere | the startup line `[chat] dai-memory: N tools` says whether it came up; if it did not, the message under it names the fix |
+| `The embedding model is not downloaded` | the plugin was copied but its setup never ran | `node <plugin>/bin/setup.mjs` — it needs network access and about 130 MB |
+| `The dai-memory MCP server did not connect` in the chat | same thing, reported mid-turn | as above; the answer you are reading is not grounded in memory |
 | No memory tools at all | the plugin setup has not finished | run `dai-memory --help`; the MCP command is `serve`, not `mcp` |
 | `No memory store found at or above ...` | the turn ran somewhere without a store | pass `--dir` pointing at the project you ran `dai-memory init` in |
 | `This conversation has spent $5.00...` | the cost ceiling | click **+ New chat**, or `pnpm chat --budget 20` |
