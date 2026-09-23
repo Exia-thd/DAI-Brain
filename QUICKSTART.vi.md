@@ -274,6 +274,8 @@ bạn biết nhánh nào không đóng góp và **tại sao**.
 
 | Triệu chứng | Nguyên nhân | Cách sửa |
 |---|---|---|
+| `ERR_PNPM_IGNORED_BUILDS` khi cài plugin | pnpm 10 chặn build script, và plugin khai ngoại lệ ở chỗ pnpm 10 không còn đọc | `pnpm chat --install-plugin` tự xử lý; hoặc thêm `onlyBuiltDependencies` vào `pnpm-workspace.yaml` của plugin |
+| `lbugjs.node: cannot open shared object file` | build script bị chặn nên binary native chưa được copy | như trên |
 | `ERR_UNKNOWN_BUILTIN_MODULE: node:sqlite` | Node < 22 | nâng Node, hoặc đặt `DATABASE_URL` để dùng Postgres |
 | `could not start claude` / `ENOENT` trên Windows | Node không spawn được `.cmd` | `npm root -g` rồi `set CLAUDE_BIN=%APPDATA%\npm\node_modules\@anthropic-ai\claude-code\cli.js` |
 | `EADDRINUSE :8080` | cổng bận | `pnpm chat --port 8090` |
