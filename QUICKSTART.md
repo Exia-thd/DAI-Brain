@@ -113,8 +113,13 @@ npm install -g pnpm
 ### Step 4. Run it
 
 ```bash
-pnpm chat --dir /path/to/Inventory --project inventory
+pnpm chat --dir /path/to/your/project --project inventory
 ```
+
+That one command does the rest: it finds the plugin, writes `plugin-mcp.json`
+pointing at it, runs `dai-memory init` if the project has no store yet, and
+starts the window. `--no-init` skips the store step; `--plugin /path/to/checkout`
+tells it where the plugin is if it cannot find it.
 
 Replace `inventory` with your own name — it is only a label that keeps one
 project's memory apart from another's.

@@ -113,8 +113,13 @@ npm install -g pnpm
 ### Bước 4. Chạy
 
 ```bash
-pnpm chat --dir /path/to/Inventory --project inventory
+pnpm chat --dir C:\Project\Inventory --project inventory
 ```
+
+Một lệnh đó làm hết phần còn lại: dò ra plugin, ghi `plugin-mcp.json` trỏ đúng
+vào nó, chạy `dai-memory init` nếu project chưa có store, rồi mở cửa sổ chat.
+`--no-init` bỏ qua bước tạo store; `--plugin /duong/dan/checkout` chỉ chỗ plugin
+nếu nó dò không ra.
 
 Thay `inventory` bằng tên project của bạn — nó chỉ là nhãn để tách memory giữa
 các project.
