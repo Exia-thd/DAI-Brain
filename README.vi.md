@@ -62,12 +62,12 @@ không Brain MCP — chỉ Gateway và giao diện chat.
 
 # 2. Trỏ Gateway vào đó.
 cat > plugin-mcp.json <<'JSON'
-{ "mcpServers": { "dai-memory": { "command": "dai-memory", "args": ["mcp"] } } }
+{ "mcpServers": { "dai-memory": { "command": "dai-memory", "args": ["serve"] } } }
 JSON
 
 # 3. Chạy cửa sổ chat. Một lệnh; nó tự tạo plugin-mcp.json nếu chưa có.
 pnpm install && pnpm build
-pnpm chat --project myproject
+pnpm chat --dir /path/to/your/project --project myproject
 
 # Hoặc tự gõ đầy đủ từng biến:
 CORE_URL=none \
@@ -84,6 +84,19 @@ không có Core phía sau để duyệt.
 
 Trên Windows làm y hệt, chỉ thay biến inline bằng `set`, và thêm `CLAUDE_BIN`
 nếu không dò được CLI — xem mục *Chạy trên Windows*.
+
+Mỗi lượt chạy **trong đúng thư mục project bạn truyền vào `--dir`**, vì một
+memory server dạng file tìm store bằng cách đi ngược lên từ đó. Thư mục tạm
+riêng cho mỗi hội thoại đồng nghĩa nó không tìm thấy gì và báo là chưa có store.
+
+Điều đó cũng có nghĩa model **đọc được** file trong thư mục đó. Hoá ra
+`--allowedTools` là danh sách cho phép những tool vốn sẽ hỏi quyền, chứ không
+phải hàng rào chặn mọi thứ còn lại — một lượt chạy thật ở đây đã gọi `Read` dù
+nó không nằm trong danh sách. Đọc chính project của bạn từ một cửa sổ chat về nó
+là hợp lý; ghi và thực thi thì không, nên `Bash`, `Write`, `Edit`, `MultiEdit`,
+`NotebookEdit` và `KillShell` bị từ chối đích danh. Đổi danh sách bằng
+`GATEWAY_DISALLOWED_TOOLS`.
+
 
 ### Bạn mất gì, và tại sao
 

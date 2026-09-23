@@ -30,6 +30,8 @@ const value = (n, d) => {
 if (flag('help')) {
   console.log(`Usage: pnpm chat [options]
 
+  --dir <path>       the project to chat about; the memory server finds its
+                     store from here                   (default: current directory)
   --project <name>   which memory scope to use          (default: personal)
   --mcp <file>       MCP config for your memory server  (default: ./plugin-mcp.json)
   --tools <list>     comma-separated tools to allow     (default: the plugin's)
@@ -47,7 +49,7 @@ if (!existsSync(mcpPath)) {
   // A starter file rather than an error: the one thing everyone needs and the
   // one thing that is tedious to look up.
   writeFileSync(mcpPath, `${JSON.stringify({
-    mcpServers: { 'dai-memory': { command: 'dai-memory', args: ['mcp'] } },
+    mcpServers: { 'dai-memory': { command: 'dai-memory', args: ['serve'] } },
   }, null, 2)}\n`, 'utf8');
   console.log(`[chat] wrote ${mcpPath} — edit it if your memory server differs\n`);
 }
@@ -71,6 +73,8 @@ const env = {
   GATEWAY_EXTRA_MCP_CONFIG: mcpPath,
   GATEWAY_EXTRA_ALLOWED_TOOLS: value('tools', process.env.GATEWAY_EXTRA_ALLOWED_TOOLS ?? DEFAULT_TOOLS),
   GATEWAY_SESSION_ROOT: process.env.GATEWAY_SESSION_ROOT ?? join(homedir(), '.dai-brain'),
+  // Every turn runs here, so a file-backed memory server finds its store.
+  GATEWAY_PROJECT_DIR: resolve(value('dir', process.env.GATEWAY_PROJECT_DIR ?? process.cwd())),
   GATEWAY_MAX_CONVERSATION_COST_USD: value('budget', process.env.GATEWAY_MAX_CONVERSATION_COST_USD ?? '5'),
   GATEWAY_WRITEBACK: 'false',
 };
@@ -85,6 +89,7 @@ if (!existsSync(entry)) {
   process.exit(1);
 }
 
+console.log(`[chat] project:  ${env.GATEWAY_PROJECT_DIR}`);
 console.log(`[chat] http://localhost:${env.GATEWAY_PORT}\n`);
 spawn(process.execPath, [entry], { stdio: 'inherit', env })
   .on('exit', (code) => process.exit(code ?? 0));

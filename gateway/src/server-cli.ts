@@ -21,6 +21,8 @@ if (config.extraMcpConfigPath) {
   console.log(`[gateway]   extra tools: ${config.extraAllowedTools.join(', ') || '(none listed — those servers are unreachable)'}`);
 }
 console.log(`[gateway]   ui:          ${config.uiRoot}`);
+console.log(`[gateway]   runs in:     ${config.projectDir ?? 'a scratch directory per conversation'}`);
+console.log(`[gateway]   refused:     ${config.disallowedTools.join(', ') || '(nothing)'}`);
 if (config.devScope) {
   console.log(`[gateway]   AUTH DISABLED — every request runs as ${config.devScope}`);
 }

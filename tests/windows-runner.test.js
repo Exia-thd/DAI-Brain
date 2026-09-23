@@ -115,3 +115,30 @@ test('the choice can be forced either way', async () => {
   });
   assert.equal(forcedOn.isolateClaudeConfig, true);
 });
+
+test('writing and executing tools are refused by name', async () => {
+  // `--allowedTools` is an allow list for tools that would otherwise prompt,
+  // not a fence around everything else: a turn observed here called `Read`
+  // without it being listed. Reading the person's own project is fine in a
+  // chat window; writing and executing are not what one is for.
+  const { loadGatewayConfig } = await import('../gateway/dist/index.js');
+  const config = loadGatewayConfig({ GATEWAY_DEV_SCOPE: 'me/me/p', CORE_URL: 'none' });
+  for (const tool of ['Bash', 'Write', 'Edit', 'NotebookEdit']) {
+    assert.ok(config.disallowedTools.includes(tool), `${tool} must be refused by default`);
+  }
+  const opened = loadGatewayConfig({
+    GATEWAY_DEV_SCOPE: 'me/me/p', CORE_URL: 'none', GATEWAY_DISALLOWED_TOOLS: '',
+  });
+  assert.deepEqual(opened.disallowedTools, [], 'an operator can open it back up');
+});
+
+test('a pinned project directory is where turns run', async () => {
+  // The plugin finds its store by walking up from the working directory, so a
+  // per-conversation scratch directory means it finds nothing.
+  const { loadGatewayConfig } = await import('../gateway/dist/index.js');
+  assert.equal(loadGatewayConfig({ GATEWAY_DEV_SCOPE: 'me/me/p' }).projectDir, null);
+  assert.equal(
+    loadGatewayConfig({ GATEWAY_DEV_SCOPE: 'me/me/p', GATEWAY_PROJECT_DIR: '/srv/inv' }).projectDir,
+    '/srv/inv',
+  );
+});

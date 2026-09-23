@@ -25,6 +25,16 @@ export interface GatewayConfig {
   requestTimeoutMs: number;
   /** Where per-session working directories live. */
   sessionRoot: string;
+  /**
+   * The directory every turn runs in, when one is pinned.
+   *
+   * Null gives each conversation its own scratch directory, which is right
+   * when several people share a Gateway. It is wrong for a personal window
+   * over a file-backed memory server: the DAI Memory plugin finds its store by
+   * walking up from the working directory, so a scratch directory means it
+   * finds nothing and reports the store as missing.
+   */
+  projectDir: string | null;
   /** Token budget for the pre-fetch injected into --append-system-prompt. */
   prefetchTokens: number;
   prefetchEnabled: boolean;
@@ -40,6 +50,16 @@ export interface GatewayConfig {
   extraMcpConfigPath: string | null;
   /** Tool names from those servers the model may call. Explicit, so it audits. */
   extraAllowedTools: string[];
+  /**
+   * Tools the model may not call, whatever else it is offered.
+   *
+   * `--allowedTools` turned out to be an allow list for tools that would
+   * otherwise prompt, not a fence around everything else: a turn observed here
+   * called `Read` without it being listed. That is reasonable in a personal
+   * window pointed at your own project, and not reasonable at all for anything
+   * that writes or executes — so those are refused by name.
+   */
+  disallowedTools: string[];
   writebackEnabled: boolean;
   writebackPollMs: number;
   writebackModel: string;
@@ -112,6 +132,7 @@ export function loadGatewayConfig(env = process.env): GatewayConfig {
     maxConcurrency: int('GATEWAY_MAX_CONCURRENCY', 8, env),
     requestTimeoutMs: int('GATEWAY_REQUEST_TIMEOUT_MS', 300_000, env),
     sessionRoot,
+    projectDir: env.GATEWAY_PROJECT_DIR || null,
     prefetchTokens: int('GATEWAY_PREFETCH_TOKENS', 1000, env),
     prefetchEnabled: env.GATEWAY_PREFETCH !== 'false',
     jwtSecret: secret,
@@ -119,6 +140,11 @@ export function loadGatewayConfig(env = process.env): GatewayConfig {
     uiRoot: env.GATEWAY_UI_ROOT ?? '',
     extraMcpConfigPath: env.GATEWAY_EXTRA_MCP_CONFIG || null,
     extraAllowedTools: (env.GATEWAY_EXTRA_ALLOWED_TOOLS ?? '')
+      .split(',').map((t) => t.trim()).filter(Boolean),
+    disallowedTools: (env.GATEWAY_DISALLOWED_TOOLS
+      // Reading is useful and the project is the person's own. Writing and
+      // executing are not what a chat window is for.
+      ?? 'Bash,Write,Edit,MultiEdit,NotebookEdit,KillShell')
       .split(',').map((t) => t.trim()).filter(Boolean),
     // Write-back needs Core to reconcile into and a queue to sit in, so it is
     // off by default in the personal setup rather than failing every turn.

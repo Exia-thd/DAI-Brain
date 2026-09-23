@@ -63,12 +63,12 @@ Brain MCP — just the Gateway and the chat UI.
 
 # 2. Point the Gateway at it.
 cat > plugin-mcp.json <<'JSON'
-{ "mcpServers": { "dai-memory": { "command": "dai-memory", "args": ["mcp"] } } }
+{ "mcpServers": { "dai-memory": { "command": "dai-memory", "args": ["serve"] } } }
 JSON
 
 # 3. Run the chat window. One command; it writes plugin-mcp.json if missing.
 pnpm install && pnpm build
-pnpm chat --project myproject
+pnpm chat --dir /path/to/your/project --project myproject
 
 # Or spell every variable out yourself:
 CORE_URL=none \
@@ -85,6 +85,20 @@ because there is no Core behind it to browse.
 
 On Windows the same thing, with `set` instead of the inline variables, and
 `CLAUDE_BIN` if the CLI cannot be resolved — see *Running on Windows*.
+
+The turn runs **in the project directory you pass with `--dir`**, because a
+file-backed memory server finds its store by walking up from there. A
+per-conversation scratch directory means it finds nothing and reports the store
+as missing.
+
+That also means the model can *read* files in that directory. `--allowedTools`
+turned out to be an allow list for tools that would otherwise prompt, not a
+fence around everything else — a turn observed here called `Read` without it
+being listed. Reading your own project from a chat window about it is
+reasonable; writing and executing are not, so `Bash`, `Write`, `Edit`,
+`MultiEdit`, `NotebookEdit` and `KillShell` are refused by name.
+`GATEWAY_DISALLOWED_TOOLS` changes the list.
+
 
 ### What you give up, and why
 

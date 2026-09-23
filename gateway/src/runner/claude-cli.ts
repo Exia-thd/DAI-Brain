@@ -107,6 +107,9 @@ export class ClaudeCliRunner implements Runner {
         ].join(','),
         '--append-system-prompt', request.systemPrompt,
       ];
+      if (this.config.disallowedTools.length > 0) {
+        args.push('--disallowedTools', this.config.disallowedTools.join(','));
+      }
       if (this.config.model) args.push('--model', this.config.model);
       if (request.resumeSessionId) args.push('--resume', request.resumeSessionId);
 
@@ -114,7 +117,10 @@ export class ClaudeCliRunner implements Runner {
       // question with a user's prompt in argv. See resolveRunner.
       const runner = resolveRunner(this.config.claudeBin);
       const proc: RunnerChild = spawn(runner.command, [...runner.prefixArgs, ...args], {
-        cwd: request.workdir,
+        // A pinned project directory when there is one: a file-backed memory
+        // server finds its store by walking up from here, and a per-session
+        // scratch directory puts it somewhere that store is not.
+        cwd: this.config.projectDir ?? request.workdir,
         env: this.childEnv(configDir),
         stdio: ['ignore', 'pipe', 'pipe'],
       });
