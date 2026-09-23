@@ -113,7 +113,7 @@ npm install -g pnpm
 ### Step 4. Run it
 
 ```bash
-pnpm chat --project inventory
+pnpm chat --dir /path/to/Inventory --project inventory
 ```
 
 Replace `inventory` with your own name — it is only a label that keeps one
@@ -265,7 +265,8 @@ tells you which branch contributed nothing, and **why**.
 | `ERR_UNKNOWN_BUILTIN_MODULE: node:sqlite` | Node older than 22 | upgrade Node, or set `DATABASE_URL` to use Postgres |
 | `could not start claude` / `ENOENT` on Windows | Node cannot spawn a `.cmd` | `npm root -g`, then `set CLAUDE_BIN=%APPDATA%\npm\node_modules\@anthropic-ai\claude-code\cli.js` |
 | `EADDRINUSE :8080` | port taken | `pnpm chat --port 8090` |
-| No memory tools at all | the plugin setup has not finished | run `dai-memory --help`; fix `plugin-mcp.json` if the command is named differently |
+| No memory tools at all | the plugin setup has not finished | run `dai-memory --help`; the MCP command is `serve`, not `mcp` |
+| `No memory store found at or above ...` | the turn ran somewhere without a store | pass `--dir` pointing at the project you ran `dai-memory init` in |
 | `This conversation has spent $5.00...` | the cost ceiling | click **+ New**, or `pnpm chat --budget 20` |
 | The model says it does not trust a memory result | an MCP server is declared but not running | remove it from the config; a declared-but-dead server is worse than none |
 | `vectorIndex: degraded — legacy IVFFlat` | the old index | `pnpm migrate` |

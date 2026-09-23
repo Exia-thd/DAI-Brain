@@ -113,7 +113,7 @@ npm install -g pnpm
 ### Bước 4. Chạy
 
 ```bash
-pnpm chat --project inventory
+pnpm chat --dir /path/to/Inventory --project inventory
 ```
 
 Thay `inventory` bằng tên project của bạn — nó chỉ là nhãn để tách memory giữa
@@ -261,7 +261,8 @@ bạn biết nhánh nào không đóng góp và **tại sao**.
 | `ERR_UNKNOWN_BUILTIN_MODULE: node:sqlite` | Node < 22 | nâng Node, hoặc đặt `DATABASE_URL` để dùng Postgres |
 | `could not start claude` / `ENOENT` trên Windows | Node không spawn được `.cmd` | `npm root -g` rồi `set CLAUDE_BIN=%APPDATA%\npm\node_modules\@anthropic-ai\claude-code\cli.js` |
 | `EADDRINUSE :8080` | cổng bận | `pnpm chat --port 8090` |
-| Không thấy tool memory nào | plugin chưa cài xong | chạy `dai-memory --help`; sửa `plugin-mcp.json` nếu tên lệnh khác |
+| Không thấy tool memory nào | plugin chưa cài xong | chạy `dai-memory --help`; lệnh MCP là `serve`, không phải `mcp` |
+| `No memory store found at or above ...` | lượt chat chạy ở thư mục không có store | truyền `--dir` trỏ đúng thư mục bạn đã chạy `dai-memory init` |
 | `This conversation has spent $5.00...` | chạm trần chi phí | bấm **+ New**, hoặc `pnpm chat --budget 20` |
 | `Invalid API key · Please run /login` | CLI chưa đăng nhập, hoặc Gateway đang cách ly config dir | chạy `claude` đăng nhập một lần; nếu có `ANTHROPIC_API_KEY` mà vẫn lỗi, đặt `GATEWAY_ISOLATE_CLAUDE_CONFIG=false` |
 | Model nói không tin kết quả memory | có MCP server khai báo mà không chạy | bỏ server đó khỏi config; khai báo server chết còn tệ hơn không khai |
