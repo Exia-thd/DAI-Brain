@@ -2,6 +2,9 @@
 
 **English** · [Tiếng Việt](README.vi.md)
 
+**New here? Start with the [step-by-step guide](QUICKSTART.md).** This file is
+the reference; that one is the walkthrough.
+
 A memory system with four parts. **Core** is the memory service — retrieval,
 ingestion, storage. **MCP** exposes Core to Claude as four tools. **Gateway**
 orchestrates the UI, the Claude CLI and Core. **UI** is the chat client.

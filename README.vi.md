@@ -2,6 +2,9 @@
 
 [English](README.md) · **Tiếng Việt**
 
+**Mới bắt đầu? Đọc [hướng dẫn từng bước](QUICKSTART.vi.md).** File này là tài
+liệu tra cứu, file kia mới là hướng dẫn làm theo.
+
 Một hệ thống memory gồm bốn thành phần. **Core** là memory service — retrieval,
 ingestion, storage. **MCP** expose Core cho Claude dưới dạng bốn tool.
 **Gateway** điều phối UI, Claude CLI và Core. **UI** là giao diện chat.

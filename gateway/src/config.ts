@@ -52,6 +52,17 @@ export interface GatewayConfig {
    * away from an empty account, and the person who finds out is the one paying.
    */
   maxConversationCostUsd: number;
+  /**
+   * Whether each session gets its own CLAUDE_CONFIG_DIR.
+   *
+   * Isolation is right when the runner authenticates from the environment: one
+   * person's login, history and settings must not become the next person's.
+   * It is wrong when there is no API key, because then the CLI's own login IS
+   * the credential, and handing it an empty directory means handing it nothing
+   * — which surfaces as "Invalid API key · Please run /login" and looks like a
+   * key problem rather than a config-directory one.
+   */
+  isolateClaudeConfig: boolean;
 }
 
 function int(name: string, fallback: number, env: NodeJS.ProcessEnv): number {
@@ -116,5 +127,8 @@ export function loadGatewayConfig(env = process.env): GatewayConfig {
     writebackModel: env.GATEWAY_WRITEBACK_MODEL ?? 'claude-haiku-4-5-20251001',
     writebackMinConfidence: Number(env.GATEWAY_WRITEBACK_MIN_CONFIDENCE ?? '0.6'),
     maxConversationCostUsd: Number(env.GATEWAY_MAX_CONVERSATION_COST_USD ?? '5'),
+    isolateClaudeConfig: env.GATEWAY_ISOLATE_CLAUDE_CONFIG
+      ? env.GATEWAY_ISOLATE_CLAUDE_CONFIG !== 'false'
+      : Boolean(env.ANTHROPIC_API_KEY),
   };
 }

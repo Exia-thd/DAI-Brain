@@ -176,8 +176,9 @@ export class ClaudeCliRunner implements Runner {
       }
       if (request.signal.aborted) throw new RunnerError('client disconnected', 'cancelled');
       if (code !== 0 && code !== null) {
+        const detail = stderr.join('').trim().slice(-800);
         throw new RunnerError(
-          `claude exited with code ${code}: ${stderr.join('').trim().slice(-800) || '(no stderr)'}`,
+          `claude exited with code ${code}: ${detail || '(no stderr)'}${this.authHint(code, detail)}`,
           'exited',
         );
       }
@@ -208,10 +209,37 @@ export class ClaudeCliRunner implements Runner {
       if (key.startsWith('CLAUDE_')) continue;
       env[key] = value;
     }
-    // A config directory per session, so one user's login state, history and
-    // settings are not the next user's.
-    env.CLAUDE_CONFIG_DIR = configDir;
+    if (this.config.isolateClaudeConfig) {
+      // A config directory per session, so one user's login state, history and
+      // settings are not the next user's. Only safe when the credential comes
+      // from the environment instead.
+      env.CLAUDE_CONFIG_DIR = configDir;
+    } else if (process.env.CLAUDE_CONFIG_DIR) {
+      // Stripped with the rest of the CLAUDE_* namespace above, so it has to be
+      // put back deliberately: without an API key this directory holds the only
+      // credential there is.
+      env.CLAUDE_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR;
+    }
     return env;
+  }
+
+  /**
+   * Turns an authentication failure into something the operator can act on.
+   *
+   * The CLI reports a missing login as "Invalid API key", which sends people
+   * looking for a key problem. The likelier cause here is that the Gateway
+   * pointed the CLI at a config directory with no login in it.
+   */
+  private authHint(code: number | null, detail: string): string {
+    if (code !== 1) return '';
+    const looksLikeAuth = detail === '' || /invalid api key|\/login|unauthor/i.test(detail);
+    if (!looksLikeAuth) return '';
+    if (this.config.isolateClaudeConfig) {
+      return '\n  The runner has its own CLAUDE_CONFIG_DIR, so it cannot use your `claude` login. '
+        + 'Set ANTHROPIC_API_KEY, or set GATEWAY_ISOLATE_CLAUDE_CONFIG=false to reuse your own login.';
+    }
+    return '\n  The runner is using your own `claude` login. Run `claude` once and sign in, '
+      + 'or set ANTHROPIC_API_KEY.';
   }
 
   /**
