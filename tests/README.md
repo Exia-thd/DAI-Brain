@@ -23,6 +23,7 @@ any order.
 | `vector-index.test.js` | That the vector branch sees the whole store: the IVFFlat index it replaces returned 1 row of 62 while reporting itself healthy |
 | `retrieval.test.js` | The pipeline end to end against a real database |
 | `jwt.test.js` | Signature verification, `alg: none`, expiry, and that a token cannot reach a project it was not granted |
+| `windows-runner.test.js` | How the CLI is started per platform, and that a shell is never used — the prompt is user text travelling in argv |
 | `semaphore.test.js` | Concurrency limits, cancellation while queued, no double-release |
 | `translate.test.js` | Claude's stream → the six UI events, including citations and unknown-line tolerance |
 | `repo-ingest.test.js` | Markdown sectioning (fences are not headings), what is ingested and what is skipped, and that re-running does not duplicate |

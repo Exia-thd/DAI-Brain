@@ -64,6 +64,64 @@ user. It is refused when `NODE_ENV=production`.
    results from `mcp__memory__*` become `citation` events.
 6. On a clean turn the transcript is queued for write-back.
 
+## Running on Windows
+
+Two things differ, and one of them will stop you immediately if it is not
+handled.
+
+**Node cannot spawn the Claude CLI's `.cmd` shim.** Since the fix for
+CVE-2024-27980, `spawn` refuses a `.cmd` without `shell: true` — and a shell is
+not an option here, because the prompt is whatever the user typed and it
+travels in argv, so under cmd.exe a message becomes a command. The Gateway
+steps over the shim instead and runs the CLI's JavaScript entry point with
+Node. It finds that entry automatically in the usual npm global layout; when it
+cannot, it fails with an instruction rather than an `ENOENT`:
+
+```cmd
+npm root -g
+set CLAUDE_BIN=%APPDATA%\npm\node_modules\@anthropic-ai\claude-code\cli.js
+```
+
+**Session directories** default to `%TEMP%\dai-brain-sessions`, not `C:\tmp`.
+Override with `GATEWAY_SESSION_ROOT` if you want them somewhere durable.
+
+### The simplest local setup
+
+Run the services in Docker and the ingest CLI on the host. Docker Desktop runs
+Linux containers, so the spawn problem does not arise at all, and the ingest CLI
+never spawns the Claude CLI:
+
+```cmd
+cd infra
+copy .env.example .env
+docker compose up -d
+
+REM Seed memory from a project on your own disk.
+cd ..
+pnpm install
+pnpm build
+set DATABASE_URL=postgres://postgres:postgres@localhost:5432/daibrain
+pnpm ingest:repo C:\Project\Inventory --scope acme/me/inventory --dry-run
+pnpm ingest:repo C:\Project\Inventory --scope acme/me/inventory
+```
+
+Then set the Gateway's scope to that project and open <http://localhost:8080>.
+With `GATEWAY_DEV_SCOPE=acme/me/inventory` in `infra/.env`, every request runs
+as that user and project.
+
+The `--dry-run` first is worth the extra minute: it prints what would be
+stored, and a repository with no ADRs, no `CONTRIBUTING`, no `CLAUDE.md` and
+terse commit messages will produce very little. That is the ingester working
+correctly — it reads reasoning, and a repository that never wrote any down has
+none to give.
+
+### Running everything natively instead
+
+Works, with `CLAUDE_BIN` set as above. Use a Postgres with pgvector — the
+official `pgvector/pgvector:pg16` image is the least trouble even when the rest
+runs on the host.
+
+
 ## Use DAI Brain from your own Claude Code
 
 The Gateway writes its own MCP config for the sessions it spawns, so the web UI

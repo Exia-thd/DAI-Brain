@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { SCOPE_HEADER, formatScopeHeader } from '@dai-brain/shared';
 import type { GatewayConfig } from '../config.js';
+import { resolveRunner } from './resolve.js';
 import type { Semaphore } from './semaphore.js';
 import type { RunRequest, Runner, StreamLine } from './types.js';
 
@@ -91,7 +92,10 @@ export class ClaudeCliRunner implements Runner {
       if (this.config.model) args.push('--model', this.config.model);
       if (request.resumeSessionId) args.push('--resume', request.resumeSessionId);
 
-      const proc: RunnerChild = spawn(this.config.claudeBin, args, {
+      // Windows cannot spawn the .cmd shim, and a shell is out of the
+      // question with a user's prompt in argv. See resolveRunner.
+      const runner = resolveRunner(this.config.claudeBin);
+      const proc: RunnerChild = spawn(runner.command, [...runner.prefixArgs, ...args], {
         cwd: request.workdir,
         env: this.childEnv(configDir),
         stdio: ['ignore', 'pipe', 'pipe'],

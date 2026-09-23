@@ -62,6 +62,62 @@ Nó bị từ chối khi `NODE_ENV=production`.
    result từ `mcp__memory__*` trở thành event `citation`.
 6. Khi lượt chat kết thúc sạch sẽ, transcript được đẩy vào hàng đợi write-back.
 
+## Chạy trên Windows
+
+Có hai chỗ khác, và một trong hai sẽ chặn bạn ngay nếu không xử lý.
+
+**Node không spawn được file `.cmd` của Claude CLI.** Kể từ bản vá
+CVE-2024-27980, `spawn` từ chối `.cmd` nếu không có `shell: true` — mà ở đây
+không được dùng shell: prompt là thứ người dùng gõ vào và nó đi trong argv, nên
+dưới cmd.exe một câu chat sẽ biến thành câu lệnh. Gateway bước qua file shim đó
+và chạy thẳng entry point JavaScript của CLI bằng Node. Nó tự tìm entry này
+trong bố cục npm global thông thường; khi không tìm được, nó báo lỗi kèm hướng
+dẫn chứ không ném ra `ENOENT`:
+
+```cmd
+npm root -g
+set CLAUDE_BIN=%APPDATA%\npm\node_modules\@anthropic-ai\claude-code\cli.js
+```
+
+**Thư mục session** mặc định nằm ở `%TEMP%\dai-brain-sessions`, không phải
+`C:\tmp`. Đổi bằng `GATEWAY_SESSION_ROOT` nếu bạn muốn nơi lưu lâu dài.
+
+### Cách chạy local đơn giản nhất
+
+Chạy service bằng Docker, còn CLI ingest chạy trên máy thật. Docker Desktop chạy
+container Linux nên vấn đề spawn không hề phát sinh, và CLI ingest thì không bao
+giờ spawn Claude CLI:
+
+```cmd
+cd infra
+copy .env.example .env
+docker compose up -d
+
+REM Mồi memory từ một project trên ổ đĩa của bạn.
+cd ..
+pnpm install
+pnpm build
+set DATABASE_URL=postgres://postgres:postgres@localhost:5432/daibrain
+pnpm ingest:repo C:\Project\Inventory --scope acme/me/inventory --dry-run
+pnpm ingest:repo C:\Project\Inventory --scope acme/me/inventory
+```
+
+Sau đó đặt scope của Gateway về đúng project đó rồi mở <http://localhost:8080>.
+Với `GATEWAY_DEV_SCOPE=acme/me/inventory` trong `infra/.env`, mọi request sẽ
+chạy dưới user và project đó.
+
+Chạy `--dry-run` trước rất đáng bỏ thêm một phút: nó in ra những gì sẽ được lưu,
+và một repo không có ADR, không có `CONTRIBUTING`, không có `CLAUDE.md`, commit
+message cụt lủn thì sẽ ra rất ít. Đó là ingester làm đúng — nó đọc *lý luận*, và
+một repo chưa từng viết lý luận ra thì không có gì để đưa.
+
+### Hoặc chạy hết native
+
+Vẫn được, với `CLAUDE_BIN` đặt như trên. Nhớ dùng Postgres có pgvector — image
+chính thức `pgvector/pgvector:pg16` là đường ít phiền nhất kể cả khi phần còn
+lại chạy trên máy thật.
+
+
 ## Dùng DAI Brain từ Claude Code của chính bạn
 
 Gateway tự viết MCP config cho các session nó spawn, nên web UI không cần cấu
