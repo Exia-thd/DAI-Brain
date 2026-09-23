@@ -12,7 +12,7 @@
  */
 
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, readSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
@@ -80,11 +80,16 @@ const mcpPath = resolve(value('mcp', join(root, 'plugin-mcp.json')));
 if (!existsSync(mcpPath)) {
   let plugin = resolvePlugin(value('plugin'), root);
 
-  if (!plugin.command && flag('install-plugin')) plugin = installPlugin();
+  // Asking beats printing three options and exiting: this is a terminal, the
+  // person is sitting at it, and the alternative is another round trip to run
+  // the same command with one more flag.
+  if (!plugin.command && (flag('install-plugin') || confirmInstall(plugin))) {
+    plugin = installPlugin();
+  }
 
   if (!plugin.command) {
     const lines = [
-      '[chat] cannot find the DAI Memory plugin.',
+      process.stdin.isTTY ? '' : '[chat] cannot find the DAI Memory plugin.',
       plugin.reason ? `\n  ${plugin.reason}` : '',
       plugin.tried?.length ? `\n  Looked in:\n${plugin.tried.map((t) => `    ${show(t)}`).join('\n')}` : '',
       '\n  Fix it in one of three ways:',
@@ -106,6 +111,36 @@ if (!existsSync(mcpPath)) {
     },
   }, null, 2)}\n`, 'utf8');
   console.log(`[chat] memory server: ${show(plugin.from)}`);
+}
+
+/**
+ * Offers to fetch the plugin, when there is someone there to answer.
+ *
+ * Only when stdin is a terminal. Under CI or a pipe there is nobody to say
+ * yes, and a prompt that blocks forever is worse than a message that explains.
+ */
+function confirmInstall(plugin) {
+  if (!process.stdin.isTTY) return false;
+
+  console.log('[chat] cannot find the DAI Memory plugin.');
+  if (plugin.reason) console.log(`\n  ${plugin.reason}`);
+  if (plugin.tried?.length) {
+    console.log(`\n  Looked in:\n${plugin.tried.map((t) => `    ${show(t)}`).join('\n')}`);
+  }
+  console.log(`\n  It can be cloned and built next to this repo, into`);
+  console.log(`  ${show(join(dirname(root), 'dai-memory-layer-plugin'))}`);
+  console.log('  That downloads an embedding model too — a few hundred MB, once.\n');
+
+  process.stdout.write('  Do that now? [Y/n] ');
+  const buffer = Buffer.alloc(64);
+  let answer = '';
+  try {
+    answer = buffer.subarray(0, readSync(0, buffer, 0, 64, null)).toString('utf8').trim().toLowerCase();
+  } catch {
+    return false; // no readable stdin after all
+  }
+  console.log('');
+  return answer === '' || answer === 'y' || answer === 'yes';
 }
 
 /**

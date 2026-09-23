@@ -119,8 +119,9 @@ pnpm chat --dir C:\Project\Inventory --project inventory
 Một lệnh đó làm hết phần còn lại: dò ra plugin, ghi `plugin-mcp.json` trỏ đúng
 vào nó, chạy `dai-memory init` nếu project chưa có store, rồi mở cửa sổ chat.
 
-**Chưa cài plugin?** Thêm `--install-plugin`: nó clone plugin về cạnh repo này,
-`pnpm install`, `pnpm build`, rồi tải model embedding.
+**Chưa cài plugin?** Nó sẽ **hỏi** bạn ngay tại terminal và tự làm nếu bạn
+bấm Enter: clone plugin về cạnh repo này, `pnpm install`, `pnpm build`, rồi tải
+model embedding. Thêm `--install-plugin` để khỏi hỏi.
 
 ```bash
 pnpm chat --install-plugin --dir C:\Project\Inventory --project inventory
