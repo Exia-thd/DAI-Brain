@@ -245,7 +245,21 @@ export async function startGateway(config: GatewayConfig): Promise<Gateway> {
   };
 
   const server = createServer(createGatewayRouter(config, deps).listener());
-  await new Promise<void>((resolve) => server.listen(config.port, resolve));
+  // Without this the listen failure reaches the process as an unhandled
+  // 'error' event and prints a stack trace, which buries the one fact that
+  // matters: something else already has the port.
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', (err: NodeJS.ErrnoException) => {
+      reject(err.code === 'EADDRINUSE'
+        ? new Error(
+            `port ${config.port} is already in use. Another DAI Brain is probably still `
+            + `running — stop it, or start this one on a different port with `
+            + `GATEWAY_PORT (or \`pnpm chat --port 8090\`).`,
+          )
+        : err);
+    });
+    server.listen(config.port, resolve);
+  });
 
   // The queue is a Postgres table, so write-back needs both it and Core.
   const worker = config.writebackEnabled && pool && core

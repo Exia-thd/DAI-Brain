@@ -285,7 +285,7 @@ tells you which branch contributed nothing, and **why**.
 | `lbugjs.node: cannot open shared object file` | the blocked build script never copied the native binary | as above |
 | `ERR_UNKNOWN_BUILTIN_MODULE: node:sqlite` | Node older than 22 | upgrade Node, or set `DATABASE_URL` to use Postgres |
 | `could not start claude` / `ENOENT` on Windows | Node cannot spawn a `.cmd` | `npm root -g`, then `set CLAUDE_BIN=%APPDATA%\npm\node_modules\@anthropic-ai\claude-code\cli.js` |
-| `EADDRINUSE :8080` | port taken | `pnpm chat --port 8090` |
+| `port 8080 is already in use` | an earlier run is still alive | close that terminal, or `pnpm chat --port 8090` |
 | No memory tools at all | the plugin setup has not finished | run `dai-memory --help`; the MCP command is `serve`, not `mcp` |
 | `No memory store found at or above ...` | the turn ran somewhere without a store | pass `--dir` pointing at the project you ran `dai-memory init` in |
 | `This conversation has spent $5.00...` | the cost ceiling | click **+ New**, or `pnpm chat --budget 20` |
