@@ -118,8 +118,21 @@ pnpm chat --dir /path/to/your/project --project inventory
 
 That one command does the rest: it finds the plugin, writes `plugin-mcp.json`
 pointing at it, runs `dai-memory init` if the project has no store yet, and
-starts the window. `--no-init` skips the store step; `--plugin /path/to/checkout`
-tells it where the plugin is if it cannot find it.
+starts the window.
+
+**Plugin not installed?** Add `--install-plugin`: it clones the plugin beside
+this repo, runs `pnpm install` and `pnpm build`, then downloads the embedding
+model.
+
+```bash
+pnpm chat --install-plugin --dir /path/to/your/project --project inventory
+```
+
+It looks in the Claude Code plugins directory (all four per-platform
+locations), **the parent of this repo** — where checkouts usually sit —
+`~/Projects` and `~/source/repos`. When it finds nothing it prints the exact
+paths it tried and three ways to fix it. `--plugin <path>` points straight at a
+checkout; `--no-init` skips creating the store.
 
 Replace `inventory` with your own name — it is only a label that keeps one
 project's memory apart from another's.

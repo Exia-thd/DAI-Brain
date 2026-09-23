@@ -118,8 +118,18 @@ pnpm chat --dir C:\Project\Inventory --project inventory
 
 Một lệnh đó làm hết phần còn lại: dò ra plugin, ghi `plugin-mcp.json` trỏ đúng
 vào nó, chạy `dai-memory init` nếu project chưa có store, rồi mở cửa sổ chat.
-`--no-init` bỏ qua bước tạo store; `--plugin /duong/dan/checkout` chỉ chỗ plugin
-nếu nó dò không ra.
+
+**Chưa cài plugin?** Thêm `--install-plugin`: nó clone plugin về cạnh repo này,
+`pnpm install`, `pnpm build`, rồi tải model embedding.
+
+```bash
+pnpm chat --install-plugin --dir C:\Project\Inventory --project inventory
+```
+
+Nó tìm plugin ở: thư mục plugin của Claude Code (cả bốn vị trí theo hệ điều
+hành), **thư mục cha của repo này** (nơi checkout thường nằm), `~/Projects`,
+`~/source/repos`. Dò không ra thì nó in **đúng những đường đã thử** kèm ba cách
+sửa. `--plugin <đường dẫn>` chỉ thẳng chỗ; `--no-init` bỏ bước tạo store.
 
 Thay `inventory` bằng tên project của bạn — nó chỉ là nhãn để tách memory giữa
 các project.
