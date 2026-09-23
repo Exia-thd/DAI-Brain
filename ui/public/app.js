@@ -10,6 +10,8 @@
  * without touching this file.
  */
 
+import { renderMarkdown } from './markdown.js';
+
 const api = {
   token: localStorage.getItem('dai-brain-token') || null,
   headers(extra = {}) {
@@ -44,6 +46,8 @@ const state = {
   costCeiling: 0,
 };
 
+const THEME_KEY = 'dai-brain-theme';
+
 const $ = (id) => document.getElementById(id);
 const el = (tag, className, text) => {
   const node = document.createElement(tag);
@@ -62,19 +66,64 @@ function clearEmptyState() {
   $('messages').querySelector('.empty')?.remove();
 }
 
+/**
+ * The assistant body keeps the raw markdown and is re-rendered from it.
+ *
+ * Appending rendered nodes as deltas arrive cannot work: `**` is not emphasis
+ * until its closing pair lands, and a line is not a list until the next one
+ * agrees. Re-rendering a few kilobytes on a frame is cheap; guessing is not.
+ *
+ * The user's own text is not rendered as markdown. They wrote those asterisks
+ * on purpose, and seeing their message come back reformatted is disorienting
+ * in a way that seeing the model's output formatted is not.
+ */
 function addMessage(role, text = '') {
   clearEmptyState();
   const wrap = el('div', `msg ${role}`);
-  wrap.append(el('div', 'role', role === 'user' ? 'You' : 'DAI Brain'));
+
+  if (role === 'user') {
+    wrap.append(el('div', 'bubble', text));
+    $('messages').append(wrap);
+    scrollToBottom();
+    return { wrap, raw: text };
+  }
+
+  wrap.append(el('div', 'avatar', '\u{1F9E0}'));
+  const stack = el('div', 'stack');
   const tools = el('div', 'tools');
   tools.hidden = true;
-  const body = el('div', 'body', text);
+  const body = el('div', 'body prose');
   const citations = el('div', 'citations');
   citations.hidden = true;
-  wrap.append(tools, body, citations);
+  stack.append(tools, body, citations);
+  wrap.append(stack);
   $('messages').append(wrap);
+
+  const view = { wrap, tools, body, citations, raw: '', frame: 0 };
+  if (text) { view.raw = text; renderBody(view); }
   scrollToBottom();
-  return { wrap, tools, body, citations };
+  return view;
+}
+
+function renderBody(view) {
+  view.body.textContent = '';
+  view.body.append(renderMarkdown(view.raw));
+}
+
+/** Coalesces a burst of deltas into one render per frame. */
+function scheduleRender(view) {
+  if (view.frame) return;
+  view.frame = requestAnimationFrame(() => {
+    view.frame = 0;
+    renderBody(view);
+    scrollToBottom();
+  });
+}
+
+function finishBody(view) {
+  if (view.frame) { cancelAnimationFrame(view.frame); view.frame = 0; }
+  renderBody(view);
+  view.body.classList.remove('streaming');
 }
 
 function scrollToBottom() {
@@ -120,6 +169,7 @@ async function ask(message) {
   if (state.streaming) return;
   const input = $('input');
   addMessage('user', message);
+  if (!state.conversationId) setChatTitle(message);
   input.value = '';
   input.style.height = 'auto';
 
@@ -145,6 +195,7 @@ async function ask(message) {
   } catch (err) {
     if (err.name !== 'AbortError') showError(err.message);
   } finally {
+    finishBody(view);
     setStreaming(false);
     state.abort = null;
     void loadConversations();
@@ -154,8 +205,9 @@ async function ask(message) {
 function handleEvent(event, view, toolNodes) {
   switch (event.type) {
     case 'message.delta':
-      view.body.textContent += event.text;
-      scrollToBottom();
+      view.raw += event.text;
+      view.body.classList.add('streaming');
+      scheduleRender(view);
       break;
 
     case 'tool.start': {
@@ -244,6 +296,40 @@ async function* readSse(body) {
 }
 
 // ---------------------------------------------------------------------------
+// Chrome
+// ---------------------------------------------------------------------------
+
+function setChatTitle(text) {
+  const title = (text || '').replace(/\s+/g, ' ').trim();
+  $('chat-title').textContent = title.length > 70 ? `${title.slice(0, 70)}\u2026` : title || 'New conversation';
+}
+
+/**
+ * The toggle writes an explicit theme; no explicit theme means follow the OS.
+ *
+ * Stored per browser rather than per conversation because it is a property of
+ * the room you are sitting in, not of the work.
+ */
+function applyTheme(theme) {
+  if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+  else delete document.documentElement.dataset.theme;
+  // The glyph is what the click will do, not what is on screen now.
+  $('theme-toggle').textContent = effectiveTheme() === 'dark' ? '\u2600' : '\u263D';
+}
+
+function effectiveTheme() {
+  return document.documentElement.dataset.theme
+    || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+}
+
+function toggleSidebar(open) {
+  const app = document.getElementById('app');
+  const on = open ?? !app.classList.contains('sidebar-open');
+  app.classList.toggle('sidebar-open', on);
+  $('scrim').hidden = !on;
+}
+
+// ---------------------------------------------------------------------------
 // Conversations
 // ---------------------------------------------------------------------------
 
@@ -258,10 +344,14 @@ async function loadConversations() {
         el('span', 'title', conversation.title || '(untitled)'),
         el('span', 'count', String(conversation.turnCount)),
       );
-      node.addEventListener('click', () => openConversation(conversation.id));
+      node.addEventListener('click', () => {
+        toggleSidebar(false);
+        void openConversation(conversation.id);
+      });
       list.append(node);
     }
   } catch (err) {
+    $('health-dot').className = 'dot down';
     $('health').textContent = `gateway: ${err.message}`;
   }
 }
@@ -275,6 +365,8 @@ async function openConversation(id) {
   for (const message of conversation.messages) {
     addMessage(message.role === 'user' ? 'user' : 'assistant', message.content);
   }
+  setChatTitle(conversation.title || conversation.messages.find((m) => m.role === 'user')?.content);
+  switchView('chat');
   showSpend();
   void loadConversations();
 }
@@ -477,6 +569,18 @@ function switchView(name) {
 }
 
 function init() {
+  applyTheme(localStorage.getItem(THEME_KEY));
+  $('theme-toggle').addEventListener('click', () => {
+    const next = effectiveTheme() === 'dark' ? 'light' : 'dark';
+    localStorage.setItem(THEME_KEY, next);
+    applyTheme(next);
+  });
+
+  for (const button of document.querySelectorAll('#sidebar-toggle, .sidebar-toggle')) {
+    button.addEventListener('click', () => toggleSidebar());
+  }
+  $('scrim').addEventListener('click', () => toggleSidebar(false));
+
   $('composer').addEventListener('submit', (event) => {
     event.preventDefault();
     const message = $('input').value.trim();
@@ -502,9 +606,14 @@ function init() {
     state.spend = null;
     $('messages').textContent = '';
     const empty = el('div', 'empty');
-    empty.append(el('h2', null, 'Ask anything'), el('p', null,
-      'Answers are grounded in what you have told DAI Brain before.'));
+    empty.append(
+      el('div', 'empty-logo', '\u{1F9E0}'),
+      el('h2', null, 'What can I help you with?'),
+      el('p', null, 'Answers are grounded in what you have told DAI Brain before.'),
+    );
     $('messages').append(empty);
+    setChatTitle(null);
+    toggleSidebar(false);
     switchView('chat');
     void loadConversations();
   });
@@ -526,6 +635,7 @@ function init() {
 async function checkHealth() {
   try {
     const health = await api.get('/health');
+    $('health-dot').className = 'dot up';
     $('health').textContent =
       `${health.runner} · ${health.concurrency.available}/${health.concurrency.limit} free`
       + (health.store ? ` · ${health.store}` : '')
@@ -535,6 +645,8 @@ async function checkHealth() {
     // removed rather than left to fail when clicked.
     if (health.memoryExplorer === false) {
       document.querySelector('.tab[data-view="memory"]')?.remove();
+      // One tab is not a choice; the bar is just a wide button at that point.
+      document.querySelector('.tabs').hidden = true;
       switchView('chat');
       // Citations come from Brain Core's packer. Without it the answer is
       // still grounded in memory, just not traceable line by line, and the
@@ -543,6 +655,7 @@ async function checkHealth() {
       if (promise) promise.textContent = 'Answers are grounded in what you have told DAI Brain before.';
     }
   } catch (err) {
+    $('health-dot').className = 'dot down';
     $('health').textContent = `offline: ${err.message}`;
   }
 }

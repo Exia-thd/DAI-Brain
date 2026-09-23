@@ -172,7 +172,7 @@ Thử lần lượt:
 1. `Xin chào` → có chữ chảy ra từng đoạn.
 2. `Hãy nhớ giúp tôi: dự án này dùng PostgreSQL chứ không dùng MongoDB, vì cần transaction.`
    → thấy chip **saving to memory** hiện lên.
-3. Bấm **+ New**, rồi hỏi `Dự án này dùng database gì, và vì sao?`
+3. Bấm **+ New chat**, rồi hỏi `Dự án này dùng database gì, và vì sao?`
    → thấy chip **searching memory**, và câu trả lời nhắc đúng lý do.
 
 Bước 3 là phép thử thật: hội thoại mới, không có ngữ cảnh nào, câu trả lời phải
@@ -281,7 +281,7 @@ bạn biết nhánh nào không đóng góp và **tại sao**.
 | `port 8080 is already in use` | lần chạy trước còn sống | đóng cửa sổ terminal đó, hoặc `pnpm chat --port 8090` |
 | Không thấy tool memory nào | plugin chưa cài xong | chạy `dai-memory --help`; lệnh MCP là `serve`, không phải `mcp` |
 | `No memory store found at or above ...` | lượt chat chạy ở thư mục không có store | truyền `--dir` trỏ đúng thư mục bạn đã chạy `dai-memory init` |
-| `This conversation has spent $5.00...` | chạm trần chi phí | bấm **+ New**, hoặc `pnpm chat --budget 20` |
+| `This conversation has spent $5.00...` | chạm trần chi phí | bấm **+ New chat**, hoặc `pnpm chat --budget 20` |
 | `Invalid API key · Please run /login` | CLI chưa đăng nhập, hoặc Gateway đang cách ly config dir | chạy `claude` đăng nhập một lần; nếu có `ANTHROPIC_API_KEY` mà vẫn lỗi, đặt `GATEWAY_ISOLATE_CLAUDE_CONFIG=false` |
 | Model nói không tin kết quả memory | có MCP server khai báo mà không chạy | bỏ server đó khỏi config; khai báo server chết còn tệ hơn không khai |
 | `vectorIndex: degraded — legacy IVFFlat` | index cũ | `pnpm migrate` |
