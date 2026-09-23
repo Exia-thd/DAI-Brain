@@ -48,6 +48,23 @@ or Brain Core; conversations go into a local SQLite file.`);
   process.exit(0);
 }
 
+/**
+ * Which build of this script is running.
+ *
+ * Printed on every start because a round of debugging was already spent on a
+ * report whose output came from a commit before the fix -- and nothing in it
+ * said so. A version line makes "you are running the old one" a fact anyone
+ * can see rather than something to deduce from the wording of an error.
+ */
+function version() {
+  const head = spawnSync('git', ['-C', root, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8' });
+  const dirty = spawnSync('git', ['-C', root, 'status', '--porcelain'], { encoding: 'utf8' });
+  if (head.status !== 0) return 'unknown (not a git checkout)';
+  return `${head.stdout.trim()}${dirty.stdout?.trim() ? ' +local changes' : ''}`;
+}
+
+console.log(`[chat] DAI Brain ${version()}`);
+
 const projectDir = resolve(value('dir', process.env.GATEWAY_PROJECT_DIR ?? process.cwd()));
 
 if (Number(process.versions.node.split('.')[0]) < 22) {
