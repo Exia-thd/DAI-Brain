@@ -52,3 +52,32 @@ test('the resolver never asks for a shell', () => {
   const source = resolveRunner.toString();
   assert.doesNotMatch(source, /shell\s*:\s*true/);
 });
+
+// --- personal setup -------------------------------------------------------
+
+test('without Brain MCP the memory tools are not allowed and the server is not declared', async () => {
+  // Declaring a server that is not running does worse than nothing: the model
+  // watches the connection fail and starts discounting whatever memory it does
+  // get. Measured — it said so in its own answer.
+  const { loadGatewayConfig } = await import('../gateway/dist/index.js');
+  const solo = loadGatewayConfig({ GATEWAY_DEV_SCOPE: 'me/me/p', CORE_URL: 'none' });
+  assert.equal(solo.coreUrl, null);
+  assert.equal(solo.mcpUrl, null, 'Brain MCP is a front for Core; without Core there is none');
+  assert.equal(solo.databaseUrl, null);
+  assert.equal(solo.writebackEnabled, false, 'the queue is a Postgres table, so it cannot run');
+
+  const full = loadGatewayConfig({
+    GATEWAY_DEV_SCOPE: 'me/me/p',
+    DATABASE_URL: 'postgres://x/y',
+  });
+  assert.equal(full.coreUrl, 'http://localhost:8081');
+  assert.equal(full.mcpUrl, 'http://localhost:8082/mcp');
+  assert.equal(full.writebackEnabled, true);
+});
+
+test('the local store path defaults under the session root', async () => {
+  const { loadGatewayConfig } = await import('../gateway/dist/index.js');
+  const config = loadGatewayConfig({ GATEWAY_DEV_SCOPE: 'me/me/p', GATEWAY_SESSION_ROOT: '/srv/brain' });
+  assert.match(config.sqlitePath, /conversations\.db$/);
+  assert.ok(config.sqlitePath.startsWith('/srv/brain'));
+});

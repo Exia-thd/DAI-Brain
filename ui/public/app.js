@@ -84,14 +84,33 @@ function scrollToBottom() {
 }
 
 const TOOL_LABELS = {
-  mcp__memory__memory_search: 'searching memory',
-  mcp__memory__memory_graph_explore: 'exploring the memory graph',
-  mcp__memory__memory_get: 'reading a memory',
-  mcp__memory__memory_write: 'saving to memory',
+  memory_search: 'searching memory',
+  memory_graph_explore: 'exploring the memory graph',
+  memory_get: 'reading a memory',
+  memory_write: 'saving to memory',
+  // The plugin's own tool names, so its servers read the same as Core's.
+  dai_memory_search: 'searching memory',
+  dai_memory_why: 'looking up why',
+  dai_memory_get: 'reading a memory',
+  dai_memory_write: 'saving to memory',
+  dai_memory_neighbors: 'exploring what is connected',
+  dai_memory_impact: 'checking what this affects',
+  dai_memory_trace: 'tracing through the code',
+  dai_memory_context: 'reading context around a symbol',
+  dai_memory_constraints: 'checking constraints',
+  dai_memory_conflicts: 'looking for contradictions',
 };
 
+/**
+ * Labels are keyed on the tool, not the server.
+ *
+ * The server name is the operator's choice -- `memory`, `dai-memory`, anything
+ * -- and it is only a prefix. Keying on it would mean a renamed server showed
+ * the user raw identifiers.
+ */
 function toolLabel(name) {
-  return TOOL_LABELS[name] || name.replace(/^mcp__\w+__/, '').replace(/_/g, ' ');
+  const bare = name.replace(/^mcp__[\w-]+__/, '');
+  return TOOL_LABELS[bare] || bare.replace(/_/g, ' ');
 }
 
 async function ask(message) {
@@ -485,7 +504,20 @@ async function checkHealth() {
     const health = await api.get('/health');
     $('health').textContent =
       `${health.runner} · ${health.concurrency.available}/${health.concurrency.limit} free`
+      + (health.store ? ` · ${health.store}` : '')
       + (health.auth.startsWith('DEV') ? ' · dev auth' : '');
+
+    // Without Core there is nothing for the explorer to read, so the tab is
+    // removed rather than left to fail when clicked.
+    if (health.memoryExplorer === false) {
+      document.querySelector('.tab[data-view="memory"]')?.remove();
+      switchView('chat');
+      // Citations come from Brain Core's packer. Without it the answer is
+      // still grounded in memory, just not traceable line by line, and the
+      // greeting should not promise otherwise.
+      const promise = document.querySelector('.empty p');
+      if (promise) promise.textContent = 'Answers are grounded in what you have told DAI Brain before.';
+    }
   } catch (err) {
     $('health').textContent = `offline: ${err.message}`;
   }

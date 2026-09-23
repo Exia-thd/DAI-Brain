@@ -48,6 +48,71 @@ GATEWAY_DEV_SCOPE=acme/me/daibrain pnpm gateway        # :8080
 `GATEWAY_DEV_SCOPE` disables authentication and runs every request as one
 user. It is refused when `NODE_ENV=production`.
 
+## The personal setup: chat window, no servers
+
+One person, one machine, memory from the plugin. No Postgres, no Brain Core, no
+Brain MCP — just the Gateway and the chat UI.
+
+```bash
+# 1. Memory. The plugin stores in the project directory; nothing to run.
+#    /plugin marketplace add Exia-thd/DAI-memory-layer-plugin
+#    /plugin install dai-memory     (then its one-time setup)
+
+# 2. Point the Gateway at it.
+cat > plugin-mcp.json <<'JSON'
+{ "mcpServers": { "dai-memory": { "command": "dai-memory", "args": ["mcp"] } } }
+JSON
+
+# 3. Run the chat window.
+pnpm install && pnpm build
+CORE_URL=none \
+GATEWAY_DEV_SCOPE=me/me/myproject \
+GATEWAY_MAX_CONCURRENCY=1 \
+GATEWAY_EXTRA_MCP_CONFIG=./plugin-mcp.json \
+GATEWAY_EXTRA_ALLOWED_TOOLS=mcp__dai-memory__dai_memory_search,mcp__dai-memory__dai_memory_why,mcp__dai-memory__dai_memory_write \
+pnpm gateway
+```
+
+Open <http://localhost:8080>. Conversations go into a SQLite file under the
+session root (`node:sqlite`, so no dependency). The Memory tab removes itself,
+because there is no Core behind it to browse.
+
+On Windows the same thing, with `set` instead of the inline variables, and
+`CLAUDE_BIN` if the CLI cannot be resolved — see *Running on Windows*.
+
+### What you give up, and why
+
+| | Full setup | Personal setup |
+|---|---|---|
+| Postgres | required | none |
+| Brain Core, Brain MCP | required | none |
+| Conversations | Postgres | SQLite file |
+| Memory | Core's hybrid retrieval | the plugin's |
+| Pre-fetch before the first turn | yes | no — the model calls the tools itself |
+| Citation chips | yes | no |
+| Write-back (learning from chats) | yes | no |
+| Concurrent chats | up to `GATEWAY_MAX_CONCURRENCY` | one |
+
+Concurrency is one because the plugin's store is embedded and takes a single
+writer; two `claude -p` processes would collide on it.
+
+Three of those absences are the same absence: pre-fetch, citations and
+write-back are all Brain Core reading and writing memory itself, and here the
+Gateway cannot see memory at all — only the model can, through its tools.
+
+**`CORE_URL=none` also drops Brain MCP**, deliberately. Declaring an MCP server
+that is not running does worse than nothing: the model watches the connection
+fail and starts discounting whatever memory it does get. That is not a guess —
+it said so in its own answer during testing.
+
+### Before you build any of this
+
+If the terminal is enough, you need none of it. `/plugin install dai-memory`
+gives you memory inside Claude Code today, with no Gateway, no UI and no
+database. The setup above is worth it only if you specifically want the chat
+window.
+
+
 ## Why a database at all
 
 The plugin this grew out of needs no server: it stores everything in files under
@@ -563,7 +628,8 @@ data.
 `CLAUDE_MODEL`, `GATEWAY_MAX_CONCURRENCY`, `GATEWAY_REQUEST_TIMEOUT_MS`,
 `GATEWAY_SESSION_ROOT`, `GATEWAY_PREFETCH_TOKENS`, `GATEWAY_JWT_SECRET`,
 `GATEWAY_DEV_SCOPE`, `GATEWAY_WRITEBACK*`, `GATEWAY_EXTRA_MCP_CONFIG`,
-`GATEWAY_EXTRA_ALLOWED_TOOLS`.
+`GATEWAY_EXTRA_ALLOWED_TOOLS`, `GATEWAY_SQLITE_PATH`. Leaving `DATABASE_URL`
+unset selects the SQLite store; `CORE_URL=none` drops Brain Core and Brain MCP.
 
 **MCP** — `MCP_PORT`, `CORE_URL`.
 

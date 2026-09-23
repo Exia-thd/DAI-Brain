@@ -12,15 +12,16 @@ import { startChat, type ChatDeps } from './chat.js';
 import { CoreClient } from './core-client.js';
 import type { GatewayConfig } from './config.js';
 import { ClaudeCliRunner } from './runner/claude-cli.js';
+import { PostgresSessionStore } from './sessions/store.js';
+import { SqliteSessionStore } from './sessions/sqlite.js';
 import { Semaphore } from './runner/semaphore.js';
-import { SessionStore } from './sessions/store.js';
+import type { SessionStore } from './sessions/types.js';
 import { WritebackWorker } from './writeback/worker.js';
 
 export const GATEWAY_VERSION = '0.1.0';
 
 export interface Gateway {
   server: Server;
-  db: pg.Pool;
   worker: WritebackWorker | null;
   close(): Promise<void>;
 }
@@ -34,11 +35,29 @@ const MIME: Record<string, string> = {
   '.ico': 'image/x-icon',
 };
 
-export function createGatewayRouter(config: GatewayConfig, deps: ChatDeps & { db: pg.Pool; semaphore: Semaphore }): Router {
+export function createGatewayRouter(
+  config: GatewayConfig,
+  deps: ChatDeps & { semaphore: Semaphore; sessions: SessionStore },
+): Router {
   const router = new Router();
   const { core, sessions } = deps;
 
   const scopeOf = (ctx: Ctx, project?: string): Scope => authenticate(config, ctx, project).scope;
+
+  /**
+   * The memory explorer needs Brain Core. In the personal setup memory lives
+   * behind an MCP server the runner talks to, and the Gateway has no way to
+   * read it -- so the endpoint says exactly that instead of failing on a null.
+   */
+  const requireCore = (): CoreClient => {
+    if (!core) {
+      throw notFound(
+        'This Gateway runs without Brain Core, so it cannot browse memory directly. '
+        + 'Memory is reachable through the MCP server the runner is given; ask in the chat instead.',
+      );
+    }
+    return core;
+  };
 
   router.get('/health', async () => ({
     ok: true,
@@ -47,6 +66,10 @@ export function createGatewayRouter(config: GatewayConfig, deps: ChatDeps & { db
     runner: deps.runner.name,
     concurrency: { limit: deps.semaphore.limit, available: deps.semaphore.available, queued: deps.semaphore.queued },
     auth: config.devScope ? 'DEV SCOPE — authentication disabled' : 'jwt',
+    // The UI reads these to decide whether to offer the memory explorer.
+    store: deps.sessions.kind,
+    core: config.coreUrl ?? null,
+    memoryExplorer: config.coreUrl !== null,
   }));
 
   /**
@@ -126,7 +149,7 @@ export function createGatewayRouter(config: GatewayConfig, deps: ChatDeps & { db
   }));
 
   /** Undo: drops every memory this conversation's write-back created. */
-  router.delete('/conversations/:id/memory', async (ctx) => core.undo(scopeOf(ctx), ctx.params.id!));
+  router.delete('/conversations/:id/memory', async (ctx) => requireCore().undo(scopeOf(ctx), ctx.params.id!));
 
   // -------------------------------------------------------------------------
   // Memory explorer — the debugging surface, proxied so the UI needs one origin
@@ -141,25 +164,25 @@ export function createGatewayRouter(config: GatewayConfig, deps: ChatDeps & { db
       if (value) query.set(key, value);
     }
     const qs = query.toString();
-    return core.listItems(scope, qs ? `?${qs}` : '');
+    return requireCore().listItems(scope, qs ? `?${qs}` : '');
   });
 
-  router.get('/memory/items/:id', async (ctx) => core.getItem(scopeOf(ctx), ctx.params.id!));
-  router.patch('/memory/items/:id', async (ctx) => core.patchItem(scopeOf(ctx), ctx.params.id!, ctx.body));
-  router.delete('/memory/items/:id', async (ctx) => core.deleteItem(scopeOf(ctx), ctx.params.id!));
+  router.get('/memory/items/:id', async (ctx) => requireCore().getItem(scopeOf(ctx), ctx.params.id!));
+  router.patch('/memory/items/:id', async (ctx) => requireCore().patchItem(scopeOf(ctx), ctx.params.id!, ctx.body));
+  router.delete('/memory/items/:id', async (ctx) => requireCore().deleteItem(scopeOf(ctx), ctx.params.id!));
 
   router.post('/memory/search', async (ctx) => {
     const b = (ctx.body ?? {}) as Record<string, unknown>;
     if (typeof b.query !== 'string') throw badRequest('query is required');
-    return core.search(scopeOf(ctx, b.project as string | undefined), b as never);
+    return requireCore().search(scopeOf(ctx, b.project as string | undefined), b as never);
   });
 
-  router.post('/memory/items', async (ctx) => core.writeItem(
+  router.post('/memory/items', async (ctx) => requireCore().writeItem(
     parseWriteScope(scopeOf(ctx, (ctx.body as Record<string, unknown>)?.project as string | undefined)),
     ctx.body as never,
   ));
 
-  router.get('/memory/entities/:name/graph', async (ctx) => core.graph(
+  router.get('/memory/entities/:name/graph', async (ctx) => requireCore().graph(
     scopeOf(ctx),
     ctx.params.name!,
     Number.parseInt(ctx.url.searchParams.get('depth') ?? '1', 10) || 1,
@@ -199,31 +222,40 @@ export function createGatewayRouter(config: GatewayConfig, deps: ChatDeps & { db
 }
 
 export async function startGateway(config: GatewayConfig): Promise<Gateway> {
-  const db = new pg.Pool({ connectionString: config.databaseUrl, max: 10 });
-  db.on('error', (err) => console.error('[gateway] idle pg client error:', err.message));
+  let pool: pg.Pool | null = null;
+  let sessions: SessionStore;
 
-  const core = new CoreClient(config.coreUrl);
-  const sessions = new SessionStore(db, config.sessionRoot);
+  if (config.databaseUrl) {
+    pool = new pg.Pool({ connectionString: config.databaseUrl, max: 10 });
+    pool.on('error', (err) => console.error('[gateway] idle pg client error:', err.message));
+    sessions = new PostgresSessionStore(pool, config.sessionRoot);
+  } else {
+    sessions = new SqliteSessionStore(config.sqlitePath, config.sessionRoot);
+  }
+
+  const core = config.coreUrl ? new CoreClient(config.coreUrl) : null;
   const semaphore = new Semaphore(config.maxConcurrency);
   const runner = new ClaudeCliRunner(config, semaphore);
-  const deps: ChatDeps & { db: pg.Pool; semaphore: Semaphore } = {
-    config, core, sessions, runner, db, semaphore,
+  const deps: ChatDeps & { semaphore: Semaphore; sessions: SessionStore } = {
+    config, core, sessions, runner, semaphore,
   };
 
   const server = createServer(createGatewayRouter(config, deps).listener());
   await new Promise<void>((resolve) => server.listen(config.port, resolve));
 
-  const worker = config.writebackEnabled ? new WritebackWorker(db, core, config) : null;
+  // The queue is a Postgres table, so write-back needs both it and Core.
+  const worker = config.writebackEnabled && pool && core
+    ? new WritebackWorker(pool, core, config)
+    : null;
   worker?.start();
 
   return {
     server,
-    db,
     worker,
     async close() {
       worker?.stop();
       await new Promise<void>((resolve) => server.close(() => resolve()));
-      await db.end();
+      await sessions.close();
     },
   };
 }

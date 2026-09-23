@@ -47,6 +47,70 @@ GATEWAY_DEV_SCOPE=acme/me/daibrain pnpm gateway        # :8080
 `GATEWAY_DEV_SCOPE` tắt hoàn toàn xác thực và chạy mọi request dưới một user.
 Nó bị từ chối khi `NODE_ENV=production`.
 
+## Chế độ cá nhân: cửa sổ chat, không server nào
+
+Một người, một máy, memory lấy từ plugin. Không Postgres, không Brain Core,
+không Brain MCP — chỉ Gateway và giao diện chat.
+
+```bash
+# 1. Memory. Plugin lưu ngay trong thư mục project, không có gì phải chạy.
+#    /plugin marketplace add Exia-thd/DAI-memory-layer-plugin
+#    /plugin install dai-memory     (rồi chạy setup một lần của nó)
+
+# 2. Trỏ Gateway vào đó.
+cat > plugin-mcp.json <<'JSON'
+{ "mcpServers": { "dai-memory": { "command": "dai-memory", "args": ["mcp"] } } }
+JSON
+
+# 3. Chạy cửa sổ chat.
+pnpm install && pnpm build
+CORE_URL=none \
+GATEWAY_DEV_SCOPE=me/me/myproject \
+GATEWAY_MAX_CONCURRENCY=1 \
+GATEWAY_EXTRA_MCP_CONFIG=./plugin-mcp.json \
+GATEWAY_EXTRA_ALLOWED_TOOLS=mcp__dai-memory__dai_memory_search,mcp__dai-memory__dai_memory_why,mcp__dai-memory__dai_memory_write \
+pnpm gateway
+```
+
+Mở <http://localhost:8080>. Hội thoại nằm trong một file SQLite dưới session
+root (dùng `node:sqlite`, không thêm dependency nào). Tab Memory tự biến mất, vì
+không có Core phía sau để duyệt.
+
+Trên Windows làm y hệt, chỉ thay biến inline bằng `set`, và thêm `CLAUDE_BIN`
+nếu không dò được CLI — xem mục *Chạy trên Windows*.
+
+### Bạn mất gì, và tại sao
+
+| | Bản đầy đủ | Bản cá nhân |
+|---|---|---|
+| Postgres | bắt buộc | không cần |
+| Brain Core, Brain MCP | bắt buộc | không cần |
+| Hội thoại | Postgres | file SQLite |
+| Memory | hybrid retrieval của Core | của plugin |
+| Pre-fetch trước lượt đầu | có | không — model tự gọi tool |
+| Citation chip | có | không |
+| Write-back (tự học từ chat) | có | không |
+| Chat đồng thời | tới `GATEWAY_MAX_CONCURRENCY` | một |
+
+Concurrency bằng một vì store của plugin là embedded và chỉ nhận một writer; hai
+tiến trình `claude -p` song song sẽ đụng nhau.
+
+Ba dòng vắng mặt phía trên thực ra là cùng một thứ: pre-fetch, citation và
+write-back đều là Brain Core tự đọc/ghi memory, mà ở đây Gateway không nhìn thấy
+memory chút nào — chỉ model nhìn thấy, qua tool của nó.
+
+**`CORE_URL=none` cũng bỏ luôn Brain MCP**, một cách có chủ ý. Khai báo một MCP
+server không chạy còn tệ hơn là không khai báo: model thấy kết nối lỗi rồi bắt
+đầu giảm tin tưởng vào chính memory mà nó nhận được. Đây không phải suy đoán —
+nó đã nói đúng như vậy trong câu trả lời lúc tôi test.
+
+### Trước khi bạn build bất cứ thứ gì ở trên
+
+Nếu terminal là đủ thì bạn không cần gì cả. `/plugin install dai-memory` cho bạn
+memory ngay trong Claude Code hôm nay, không Gateway, không UI, không database.
+Phần setup ở trên chỉ đáng bỏ công nếu bạn thật sự muốn cái cửa sổ chat.
+
+
 ## Tại sao lại cần database
 
 Plugin mà cái này lớn lên từ đó không cần server: nó lưu mọi thứ thành file
@@ -549,7 +613,8 @@ project scope mới tinh, nên chúng không bao giờ nhìn thấy dữ liệu 
 `CLAUDE_MODEL`, `GATEWAY_MAX_CONCURRENCY`, `GATEWAY_REQUEST_TIMEOUT_MS`,
 `GATEWAY_SESSION_ROOT`, `GATEWAY_PREFETCH_TOKENS`, `GATEWAY_JWT_SECRET`,
 `GATEWAY_DEV_SCOPE`, `GATEWAY_WRITEBACK*`, `GATEWAY_EXTRA_MCP_CONFIG`,
-`GATEWAY_EXTRA_ALLOWED_TOOLS`.
+`GATEWAY_EXTRA_ALLOWED_TOOLS`, `GATEWAY_SQLITE_PATH`. Bỏ trống `DATABASE_URL`
+sẽ dùng store SQLite; `CORE_URL=none` bỏ luôn Brain Core và Brain MCP.
 
 **MCP** — `MCP_PORT`, `CORE_URL`.
 

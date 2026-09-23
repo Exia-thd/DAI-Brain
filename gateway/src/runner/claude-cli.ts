@@ -36,6 +36,21 @@ const MEMORY_TOOLS = [
   'mcp__memory__memory_write',
 ];
 
+/** Brain MCP's entry, omitted entirely when there is no Brain MCP to reach. */
+function memoryServer(url: string, scope: Parameters<typeof formatScopeHeader>[0]) {
+  return {
+    memory: {
+      type: 'http',
+      url,
+      headers: {
+        // The scope the Gateway decided, travelling to MCP and on to Core.
+        // The model never sees this header and cannot change it.
+        [SCOPE_HEADER]: formatScopeHeader(scope),
+      },
+    },
+  };
+}
+
 type McpServers = Record<string, unknown>;
 
 /**
@@ -86,7 +101,10 @@ export class ClaudeCliRunner implements Runner {
         '--mcp-config', mcpConfigPath,
         '--strict-mcp-config',
         '--allowedTools',
-        [...MEMORY_TOOLS, ...this.config.extraAllowedTools].join(','),
+        [
+          ...(this.config.mcpUrl ? MEMORY_TOOLS : []),
+          ...this.config.extraAllowedTools,
+        ].join(','),
         '--append-system-prompt', request.systemPrompt,
       ];
       if (this.config.model) args.push('--model', this.config.model);
@@ -265,15 +283,7 @@ export class ClaudeCliRunner implements Runner {
         // else's endpoint -- which would be handed this user's scope header on
         // the next search.
         ...extra,
-        memory: {
-          type: 'http',
-          url: this.config.mcpUrl,
-          headers: {
-            // The scope the Gateway decided, travelling to MCP and on to Core.
-            // The model never sees this header and cannot change it.
-            [SCOPE_HEADER]: formatScopeHeader(request.scope),
-          },
-        },
+        ...(this.config.mcpUrl ? memoryServer(this.config.mcpUrl, request.scope) : {}),
       },
     }, null, 2), 'utf8');
     return path;
