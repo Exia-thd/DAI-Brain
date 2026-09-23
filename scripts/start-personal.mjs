@@ -123,16 +123,28 @@ if (!existsSync(mcpPath)) {
  * caller decides whether it was really a failure.
  */
 function run([command, args, cwd], { capture = false } = {}) {
-  const result = spawnSync(command, args, {
+  // On Windows these are .cmd shims, which Node will not spawn without a
+  // shell. Passing the arguments as an array alongside `shell: true` is
+  // deprecated and unsafe -- the shell concatenates them unescaped -- so the
+  // whole line is quoted here instead, which is what shell mode expects.
+  const windows = process.platform === 'win32';
+  const line = windows ? [command, ...args].map(quote).join(' ') : command;
+
+  const result = spawnSync(line, windows ? [] : args, {
     cwd,
     stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
     encoding: 'utf8',
-    shell: process.platform === 'win32',
+    shell: windows,
   });
   const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
   if (result.status === 0) return { ok: true, output };
   if (!capture) console.error(`\n[chat] \`${command} ${args.join(' ')}\` failed in ${show(cwd)}.`);
   return { ok: false, output };
+}
+
+/** Quotes an argument for cmd.exe, which is the only shell used here. */
+function quote(arg) {
+  return /[\s&|<>^"()]/.test(arg) ? `"${arg.replace(/"/g, '""')}"` : arg;
 }
 
 function reportFailure([command, args, cwd], output) {

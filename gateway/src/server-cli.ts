@@ -9,7 +9,15 @@ const config = loadGatewayConfig();
 // dist/ -> gateway/ -> repo root -> ui/public
 if (!config.uiRoot) config.uiRoot = join(here, '..', '..', 'ui', 'public');
 
-const gateway = await startGateway(config);
+let gateway;
+try {
+  gateway = await startGateway(config);
+} catch (err) {
+  // One sentence, not a stack: every way this fails is a setup problem the
+  // person can act on, and none of them is in the stack.
+  console.error(`[gateway] ${(err as Error).message}`);
+  process.exit(1);
+}
 console.log(`[gateway] dai-brain-gateway ${GATEWAY_VERSION} on :${config.port}`);
 console.log(`[gateway]   store:       ${config.databaseUrl ? 'postgres' : `sqlite — ${config.sqlitePath}`}`);
 console.log(`[gateway]   core:        ${config.coreUrl ?? 'none (memory comes from the runner\'s MCP servers)'}`);

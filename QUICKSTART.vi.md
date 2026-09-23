@@ -278,7 +278,7 @@ bạn biết nhánh nào không đóng góp và **tại sao**.
 | `lbugjs.node: cannot open shared object file` | build script bị chặn nên binary native chưa được copy | như trên |
 | `ERR_UNKNOWN_BUILTIN_MODULE: node:sqlite` | Node < 22 | nâng Node, hoặc đặt `DATABASE_URL` để dùng Postgres |
 | `could not start claude` / `ENOENT` trên Windows | Node không spawn được `.cmd` | `npm root -g` rồi `set CLAUDE_BIN=%APPDATA%\npm\node_modules\@anthropic-ai\claude-code\cli.js` |
-| `EADDRINUSE :8080` | cổng bận | `pnpm chat --port 8090` |
+| `port 8080 is already in use` | lần chạy trước còn sống | đóng cửa sổ terminal đó, hoặc `pnpm chat --port 8090` |
 | Không thấy tool memory nào | plugin chưa cài xong | chạy `dai-memory --help`; lệnh MCP là `serve`, không phải `mcp` |
 | `No memory store found at or above ...` | lượt chat chạy ở thư mục không có store | truyền `--dir` trỏ đúng thư mục bạn đã chạy `dai-memory init` |
 | `This conversation has spent $5.00...` | chạm trần chi phí | bấm **+ New**, hoặc `pnpm chat --budget 20` |
