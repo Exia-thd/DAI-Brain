@@ -115,13 +115,61 @@ if (!existsSync(mcpPath)) {
   console.log(`[chat] memory server: ${show(plugin.from)}`);
 }
 
-function run([command, args, cwd]) {
+/**
+ * Runs a step.
+ *
+ * `capture` holds the output back so a failure this function is about to
+ * recover from does not print a scary line and then a reassuring one; the
+ * caller decides whether it was really a failure.
+ */
+function run([command, args, cwd], { capture = false } = {}) {
   const result = spawnSync(command, args, {
-    cwd, stdio: 'inherit', shell: process.platform === 'win32',
+    cwd,
+    stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
+    encoding: 'utf8',
+    shell: process.platform === 'win32',
   });
-  if (result.status === 0) return true;
+  const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
+  if (result.status === 0) return { ok: true, output };
+  if (!capture) console.error(`\n[chat] \`${command} ${args.join(' ')}\` failed in ${show(cwd)}.`);
+  return { ok: false, output };
+}
+
+function reportFailure([command, args, cwd], output) {
+  if (output) process.stdout.write(output);
   console.error(`\n[chat] \`${command} ${args.join(' ')}\` failed in ${show(cwd)}.`);
-  return false;
+}
+
+/**
+ * Installs, and gets past pnpm refusing to run the native build scripts.
+ *
+ * pnpm 10 blocks install scripts unless they are approved, and fails the whole
+ * install rather than carrying on without them. The plugin does declare its
+ * exceptions, but under `pnpm.onlyBuiltDependencies` in package.json, which
+ * pnpm 10 no longer reads — it warns about the ignored field and then errors
+ * about the ignored builds, which reads as two unrelated problems.
+ *
+ * Moving the setting is not enough on its own: whether the error fires at all
+ * depends on pnpm's configuration, and on a machine where it does, the
+ * approval is what clears it. `pnpm approve-builds --all` records the approval
+ * without a prompt, and the install is then repeated.
+ */
+function installDependencies(target) {
+  const step = ['pnpm', ['install'], target];
+  const first = run(step, { capture: true });
+  if (first.ok) {
+    process.stdout.write(first.output);
+    return true;
+  }
+
+  if (!/ERR_PNPM_IGNORED_BUILDS|Ignored build scripts/i.test(first.output)) {
+    reportFailure(step, first.output);
+    return false;
+  }
+
+  console.log('[chat] pnpm blocks native build scripts until they are approved. Approving.\n');
+  if (!run(['pnpm', ['approve-builds', '--all'], target]).ok) return false;
+  return run(step).ok;
 }
 
 function failed(target) {
@@ -238,14 +286,13 @@ function installPlugin() {
     : ['git', ['clone', '--depth', '1', PLUGIN_REPO, target], dirname(root)];
 
   console.log(`[chat] installing the DAI Memory plugin into ${show(target)}\n`);
-  if (!run(clone)) return failed(target);
+  if (!run(clone).ok) return failed(target);
 
   allowNativeBuilds(target);
 
-  for (const step of [['pnpm', ['install'], target], ['pnpm', ['build'], target]]) {
-    if (!run(step)) return failed(target);
-  }
+  if (!installDependencies(target)) return failed(target);
   ensureNativeBinding(target);
+  if (!run(['pnpm', ['build'], target]).ok) return failed(target);
   // The embedding model is a separate download and the plugin refuses to run
   // without it, so this is part of installing rather than an extra.
   console.log('\n[chat] downloading the embedding model (once, a few hundred MB)\n');
