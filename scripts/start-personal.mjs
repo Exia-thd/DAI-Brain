@@ -12,7 +12,9 @@
  */
 
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, readSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync, copyFileSync, existsSync, readFileSync, readSync, readdirSync, writeFileSync,
+} from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
@@ -113,6 +115,85 @@ if (!existsSync(mcpPath)) {
   console.log(`[chat] memory server: ${show(plugin.from)}`);
 }
 
+function run([command, args, cwd]) {
+  const result = spawnSync(command, args, {
+    cwd, stdio: 'inherit', shell: process.platform === 'win32',
+  });
+  if (result.status === 0) return true;
+  console.error(`\n[chat] \`${command} ${args.join(' ')}\` failed in ${show(cwd)}.`);
+  return false;
+}
+
+function failed(target) {
+  return { command: null, tried: [target], reason: 'the install did not finish' };
+}
+
+/**
+ * Lets the plugin's native dependencies run their install scripts.
+ *
+ * pnpm 10 refuses to run them by default and fails the install outright, and
+ * the plugin declares its exceptions under `pnpm.onlyBuiltDependencies` in
+ * package.json -- which pnpm 10 no longer reads. It warns about that and then
+ * errors, which reads as two unrelated problems rather than one.
+ *
+ * Without those scripts `@ladybugdb/core` never copies its platform binary
+ * into place, and the first command fails with `lbugjs.node: cannot open
+ * shared object file`. The setting's new home is pnpm-workspace.yaml.
+ */
+function allowNativeBuilds(target) {
+  const workspace = join(target, 'pnpm-workspace.yaml');
+  if (!existsSync(workspace)) return;
+  const text = readFileSync(workspace, 'utf8');
+  if (text.includes('onlyBuiltDependencies')) return;
+
+  appendFileSync(workspace, [
+    '',
+    '# Added by DAI Brain: pnpm 10 reads this here, not from package.json,',
+    '# and without it the native binding is never put in place.',
+    'onlyBuiltDependencies:',
+    "  - '@ladybugdb/core'",
+    '  - onnxruntime-node',
+    '  - protobufjs',
+    '  - sharp',
+    '',
+  ].join('\n'), 'utf8');
+  console.log(`[chat] allowed native builds in ${show(workspace)}`);
+}
+
+/**
+ * Puts the platform binary where the loader looks, if the install did not.
+ *
+ * Belt and braces for the case above: the package ships one binary per
+ * platform as an optional dependency and copies the right one in a postinstall
+ * script. When that script is skipped the binary is on disk but in the wrong
+ * package, so a copy is all that is missing.
+ */
+function ensureNativeBinding(target) {
+  const pnpmDir = join(target, 'node_modules', '.pnpm');
+  if (!existsSync(pnpmDir)) return;
+
+  let entries;
+  try {
+    entries = readdirSync(pnpmDir);
+  } catch {
+    return;
+  }
+  const core = entries.find((name) => /^@ladybugdb\+core@/.test(name));
+  const platform = entries.find((name) => /^@ladybugdb\+core-[a-z0-9]+-[a-z0-9]+@/.test(name));
+  if (!core || !platform) return;
+
+  const dest = join(pnpmDir, core, 'node_modules', '@ladybugdb', 'core', 'lbugjs.node');
+  if (existsSync(dest)) return;
+
+  const scope = join(pnpmDir, platform, 'node_modules', '@ladybugdb');
+  const pkg = readdirSync(scope).find((name) => name.startsWith('core-'));
+  const source = pkg && join(scope, pkg, 'lbugjs.node');
+  if (!source || !existsSync(source)) return;
+
+  copyFileSync(source, dest);
+  console.log('[chat] placed the native binding the install script would have copied');
+}
+
 /**
  * Offers to fetch the plugin, when there is someone there to answer.
  *
@@ -152,19 +233,19 @@ function confirmInstall(plugin) {
  */
 function installPlugin() {
   const target = join(dirname(root), 'dai-memory-layer-plugin');
-  const steps = existsSync(target)
-    ? [['git', ['pull', '--ff-only'], target]]
-    : [['git', ['clone', '--depth', '1', PLUGIN_REPO, target], dirname(root)]];
-  steps.push(['pnpm', ['install'], target], ['pnpm', ['build'], target]);
+  const clone = existsSync(target)
+    ? ['git', ['pull', '--ff-only'], target]
+    : ['git', ['clone', '--depth', '1', PLUGIN_REPO, target], dirname(root)];
 
   console.log(`[chat] installing the DAI Memory plugin into ${show(target)}\n`);
-  for (const [command, args, cwd] of steps) {
-    const result = spawnSync(command, args, { cwd, stdio: 'inherit', shell: process.platform === 'win32' });
-    if (result.status !== 0) {
-      console.error(`\n[chat] \`${command} ${args.join(' ')}\` failed in ${show(cwd)}.`);
-      return { command: null, tried: [target], reason: 'the install did not finish' };
-    }
+  if (!run(clone)) return failed(target);
+
+  allowNativeBuilds(target);
+
+  for (const step of [['pnpm', ['install'], target], ['pnpm', ['build'], target]]) {
+    if (!run(step)) return failed(target);
   }
+  ensureNativeBinding(target);
   // The embedding model is a separate download and the plugin refuses to run
   // without it, so this is part of installing rather than an extra.
   console.log('\n[chat] downloading the embedding model (once, a few hundred MB)\n');

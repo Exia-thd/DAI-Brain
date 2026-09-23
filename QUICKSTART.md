@@ -281,6 +281,8 @@ tells you which branch contributed nothing, and **why**.
 | Symptom | Cause | Fix |
 |---|---|---|
 | `Invalid API key · Please run /login` | the CLI is not signed in, or the Gateway isolated its config directory | run `claude` and sign in once; if you do have `ANTHROPIC_API_KEY` and still see it, set `GATEWAY_ISOLATE_CLAUDE_CONFIG=false` |
+| `ERR_PNPM_IGNORED_BUILDS` installing the plugin | pnpm 10 blocks build scripts, and the plugin declares its exceptions where pnpm 10 no longer reads them | `pnpm chat --install-plugin` handles it; or add `onlyBuiltDependencies` to the plugin's `pnpm-workspace.yaml` |
+| `lbugjs.node: cannot open shared object file` | the blocked build script never copied the native binary | as above |
 | `ERR_UNKNOWN_BUILTIN_MODULE: node:sqlite` | Node older than 22 | upgrade Node, or set `DATABASE_URL` to use Postgres |
 | `could not start claude` / `ENOENT` on Windows | Node cannot spawn a `.cmd` | `npm root -g`, then `set CLAUDE_BIN=%APPDATA%\npm\node_modules\@anthropic-ai\claude-code\cli.js` |
 | `EADDRINUSE :8080` | port taken | `pnpm chat --port 8090` |
