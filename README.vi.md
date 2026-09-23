@@ -290,6 +290,29 @@ Một nhánh trả về rỗng mà không nói gì chính là cách hệ hybrid 
 thành "còn nhánh nào chạy được thì dùng nhánh đó". Memory explorer hiển thị
 report này cho mọi lần search, nên đó là cách nhanh nhất để chẩn đoán recall kém.
 
+### Index vector
+
+HNSW, không phải IVFFlat, và khác biệt này không phải chuyện sở thích.
+
+IVFFlat phải được *huấn luyện*: nó gom các vector đang có trong bảng thành
+`lists` cụm, và một truy vấn với `probes = 1` mặc định chỉ quét đúng **một**
+cụm. Tạo lúc migrate thì bảng còn trống, nên tâm cụm vô nghĩa. Đo trên store 62
+item, index IVFFlat khi được planner chọn trả về **1 dòng trên 62**, trong khi
+quét chính xác trả đủ 62 — và nó vẫn báo mình hoàn toàn khỏe mạnh.
+
+Đó là dạng bug tệ nhất ở đây: nhánh không hề fail nên không bao giờ bị đánh dấu
+degraded, và mọi con số recall đo phía sau đều đang đo trên một phần nhỏ của
+store.
+
+HNSW không cần dữ liệu huấn luyện, nên nó đúng ngay cả khi bảng trống và vẫn
+đúng khi store lớn dần mà không ai phải chỉnh lại `lists` với `probes`. Dưới
+pgvector 0.5 thì không có HNSW, và migration sẽ **không** tạo index nào cả: quét
+chính xác tuy tuyến tính nhưng đầy đủ, đó là đánh đổi đúng.
+
+`pnpm migrate` sửa được database đã có — migration `002` xoá index cũ và dựng
+lại. `/health` sẽ báo `degraded` nếu còn gặp index IVFFlat, kèm cách sửa.
+
+
 ### Packer theo token budget
 
 `maxTokens` là trần cứng. Không item nào được chiếm quá 35% budget, nên một
@@ -312,11 +335,11 @@ eval dựng từ chính output của nó thì chẳng đo được gì.
 Số liệu hiện tại, chạy trên embedder **hash** (xem bên dưới — đây là mức sàn):
 
 ```
-đủ nhánh, không rerank       recall@5 83.3%   recall@10 90.4%
-                             MRR@10 0.843     nDCG@10 0.825    p95 8ms
-chỉ vector+fts (tắt graph)   recall@5 81.1%   recall@10 89.3%   MRR@10 0.804
-đủ nhánh, graph 2 hop        recall@5 83.3%   recall@10 89.3%   MRR@10 0.831
-đủ nhánh + rerank            recall@5 83.3%   recall@10 89.3%   MRR@10 0.847
+đủ nhánh, không rerank       recall@5 84.4%   recall@10 90.7%
+                             MRR@10 0.839     p95 7ms
+chỉ vector+fts (tắt graph)   recall@5 81.1%   recall@10 89.6%   MRR@10 0.804
+đủ nhánh, graph 2 hop        recall@5 84.4%   recall@10 89.6%   MRR@10 0.838
+đủ nhánh + rerank            recall@5 82.2%   recall@10 88.5%   MRR@10 0.847
 ```
 
 Nghĩa là graph expansion đáng giá khoảng 4 điểm MRR ở 1 hop và không thêm gì ở

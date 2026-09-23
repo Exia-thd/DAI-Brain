@@ -20,6 +20,7 @@ any order.
 | `redact.test.js` | The privacy filter, including that its global regexes do not carry state between calls |
 | `packer.test.js` | The token budget is never exceeded, and no single item eats it |
 | `fusion.test.js` | RRF ordering, weights, determinism, and that a degraded branch is always named |
+| `vector-index.test.js` | That the vector branch sees the whole store: the IVFFlat index it replaces returned 1 row of 62 while reporting itself healthy |
 | `retrieval.test.js` | The pipeline end to end against a real database |
 | `jwt.test.js` | Signature verification, `alg: none`, expiry, and that a token cannot reach a project it was not granted |
 | `semaphore.test.js` | Concurrency limits, cancellation while queued, no double-release |

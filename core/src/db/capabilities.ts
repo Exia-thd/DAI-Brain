@@ -25,6 +25,25 @@ export interface Capabilities {
   [name: string]: Capability;
 }
 
+/** The installed pgvector version, or null when the extension is absent. */
+export async function pgvectorVersion(db: Db): Promise<string | null> {
+  const { rows } = await db.query<{ v: string }>(
+    `SELECT extversion AS v FROM pg_extension WHERE extname = 'vector'`,
+  );
+  return rows[0]?.v ?? null;
+}
+
+/** Which ANN index the live table actually has. `/health` reports it. */
+export async function embeddingIndex(db: Db): Promise<'hnsw' | 'ivfflat' | 'none'> {
+  const { rows } = await db.query<{ def: string }>(
+    `SELECT indexdef AS def FROM pg_indexes WHERE indexname = 'memory_items_embedding_idx'`,
+  );
+  const def = rows[0]?.def ?? '';
+  if (/USING hnsw/i.test(def)) return 'hnsw';
+  if (/USING ivfflat/i.test(def)) return 'ivfflat';
+  return 'none';
+}
+
 export async function hasPgvector(db: Db): Promise<boolean> {
   const { rows } = await db.query<{ n: string }>(
     `SELECT count(*)::text AS n FROM pg_extension WHERE extname = 'vector'`,
@@ -43,15 +62,38 @@ export async function embeddingIsVector(db: Db): Promise<boolean> {
 
 export async function probe(db: Db, embeddingDetail: Capability): Promise<Capabilities> {
   const vector = await embeddingIsVector(db).catch(() => false);
+  const index = vector ? await embeddingIndex(db).catch(() => 'none' as const) : 'none';
   return {
-    vectorIndex: vector
-      ? { status: 'available', detail: 'pgvector ANN index' }
-      : {
-          status: 'degraded',
-          detail: 'pgvector not installed; vector branch runs an exact scan (linear in item count)',
-        },
+    vectorIndex: describeIndex(vector, index),
     fts: { status: 'available', detail: "postgres tsvector, 'simple' config" },
     graph: { status: 'available', detail: 'entities/relations tables' },
     embeddings: embeddingDetail,
   };
+}
+
+function describeIndex(vector: boolean, index: 'hnsw' | 'ivfflat' | 'none'): Capability {
+  if (!vector) {
+    return {
+      status: 'degraded',
+      detail: 'pgvector not installed; vector branch runs an exact scan (linear in item count)',
+    };
+  }
+  switch (index) {
+    case 'hnsw':
+      return { status: 'available', detail: 'pgvector HNSW index' };
+    case 'ivfflat':
+      // Loud, because this is the shape the bug took: an IVFFlat index built
+      // before the rows existed answers with a fraction of the store and never
+      // says so. Run `pnpm migrate` to replace it.
+      return {
+        status: 'degraded',
+        detail: 'legacy IVFFlat index: trained on an empty table, so the vector branch '
+          + 'sees only a fraction of the store. Run `pnpm migrate` to rebuild it as HNSW.',
+      };
+    default:
+      return {
+        status: 'degraded',
+        detail: 'no ANN index; the vector branch runs an exact scan (correct, linear in item count)',
+      };
+  }
 }

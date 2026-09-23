@@ -3,8 +3,11 @@ export { MemoryService, VERSION } from './service.js';
 export { createCoreRouter, startCore } from './server.js';
 
 export { createPool, parseEmbedding, type Db } from './db/pool.js';
-export { migrate, type MigrationResult } from './db/migrate.js';
-export { probe, embeddingIsVector, hasPgvector, type Capabilities, type Capability } from './db/capabilities.js';
+export { migrate, indexPlan, type MigrationResult } from './db/migrate.js';
+export {
+  probe, embeddingIsVector, hasPgvector, pgvectorVersion, embeddingIndex,
+  type Capabilities, type Capability,
+} from './db/capabilities.js';
 
 export {
   createEmbeddingProvider, HashEmbeddingProvider, TransformersEmbeddingProvider,

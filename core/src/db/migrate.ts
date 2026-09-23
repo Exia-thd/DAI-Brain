@@ -2,7 +2,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import type { Db } from './pool.js';
-import { hasPgvector } from './capabilities.js';
+import { hasPgvector, pgvectorVersion } from './capabilities.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 /** dist/db/ -> the package root, where `migrations/` is shipped. */
@@ -12,6 +12,9 @@ export interface MigrationResult {
   applied: string[];
   skipped: string[];
   vectorMode: 'pgvector' | 'array';
+  /** Which ANN index the schema ended up with, and why. */
+  indexMode: 'hnsw' | 'none';
+  indexReason: string;
 }
 
 /**
@@ -40,10 +43,9 @@ export async function migrate(db: Db, dims: number): Promise<MigrationResult> {
   }
 
   const embeddingType = vector ? `vector(${dims})` : 'REAL[]';
-  const vectorIndex = vector
-    ? `CREATE INDEX IF NOT EXISTS memory_items_embedding_idx
-  ON memory_items USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);`
-    : '-- no ANN index: embeddings are stored as REAL[] and scanned exactly.';
+  const { ddl: vectorIndex, mode: indexMode, reason: indexReason } = indexPlan(
+    vector, vector ? await pgvectorVersion(db) : null,
+  );
 
   const { rows } = await db.query<{ version: string }>('SELECT version FROM schema_migrations');
   const done = new Set(rows.map((r) => r.version));
@@ -74,5 +76,69 @@ export async function migrate(db: Db, dims: number): Promise<MigrationResult> {
     }
   }
 
-  return { applied, skipped, vectorMode: vector ? 'pgvector' : 'array' };
+  return {
+    applied, skipped,
+    vectorMode: vector ? 'pgvector' : 'array',
+    indexMode, indexReason,
+  };
+}
+
+/**
+ * Which ANN index to build, and whether to build one at all.
+ *
+ * HNSW rather than IVFFlat, because IVFFlat has to be *trained* on the vectors
+ * already in the table: it clusters them into `lists` buckets and a query, at
+ * the default `ivfflat.probes = 1`, scans exactly one bucket. Built at
+ * migration time the table is empty, so the centroids are meaningless -- and
+ * on a small store `lists = 100` spreads sixty rows across a hundred buckets,
+ * which measured here returned 4 rows out of 62 where an exact scan returned
+ * all 62.
+ *
+ * That is the worst shape a bug can take in this system. The branch does not
+ * fail, so it never reports itself degraded; it just quietly answers with a
+ * fraction of the store, and every number downstream is measured against the
+ * fraction.
+ *
+ * HNSW needs no training data, so it is correct on an empty table, and it
+ * stays correct as the store grows without anyone retuning `lists` and
+ * `probes`. It costs more to build and more memory to hold, which at the scale
+ * of a memory store is not a real cost.
+ *
+ * Below pgvector 0.5 there is no HNSW, and the honest answer is no index at
+ * all: an exact scan is linear but correct, and the vector branch already
+ * reports that fallback in its fusion report.
+ */
+export function indexPlan(
+  vector: boolean,
+  version: string | null,
+): { ddl: string; mode: 'hnsw' | 'none'; reason: string } {
+  if (!vector) {
+    return {
+      ddl: '-- no ANN index: embeddings are stored as REAL[] and scanned exactly.',
+      mode: 'none',
+      reason: 'pgvector not installed; embeddings stored as real[]',
+    };
+  }
+
+  const major = Number.parseInt(version?.split('.')[0] ?? '0', 10);
+  const minor = Number.parseInt(version?.split('.')[1] ?? '0', 10);
+  const hasHnsw = major > 0 || minor >= 5;
+
+  if (!hasHnsw) {
+    return {
+      ddl: `DROP INDEX IF EXISTS memory_items_embedding_idx;
+-- pgvector ${version ?? '?'} has no HNSW, and an IVFFlat index built on an empty
+-- table silently returns a fraction of the rows. An exact scan is slower and right.`,
+      mode: 'none',
+      reason: `pgvector ${version ?? '?'} predates HNSW; using exact scan rather than a mistrained IVFFlat index`,
+    };
+  }
+
+  return {
+    ddl: `DROP INDEX IF EXISTS memory_items_embedding_idx;
+CREATE INDEX memory_items_embedding_idx
+  ON memory_items USING hnsw (embedding vector_cosine_ops);`,
+    mode: 'hnsw',
+    reason: `pgvector ${version} HNSW index`,
+  };
 }
