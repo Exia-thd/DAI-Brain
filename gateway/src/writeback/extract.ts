@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { MEMORY_TYPES, type MemoryType, type TranscriptTurn } from '@dai-brain/shared';
+import { resolveRunner } from '../runner/resolve.js';
 
 export interface ExtractedFact {
   type: MemoryType;
@@ -137,7 +138,10 @@ function extractJsonObject(text: string): string | null {
 
 function runClaude(prompt: string, options: ExtractorOptions): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn(options.claudeBin, [
+    // Same platform problem as the main runner, same answer. See resolveRunner.
+    const runner = resolveRunner(options.claudeBin);
+    const child = spawn(runner.command, [
+      ...runner.prefixArgs,
       '-p', prompt,
       '--output-format', 'text',
       '--model', options.model,

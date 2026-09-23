@@ -1,3 +1,6 @@
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 export interface GatewayConfig {
   port: number;
   databaseUrl: string;
@@ -65,7 +68,9 @@ export function loadGatewayConfig(env = process.env): GatewayConfig {
     model: env.CLAUDE_MODEL ?? null,
     maxConcurrency: int('GATEWAY_MAX_CONCURRENCY', 8, env),
     requestTimeoutMs: int('GATEWAY_REQUEST_TIMEOUT_MS', 300_000, env),
-    sessionRoot: env.GATEWAY_SESSION_ROOT ?? '/tmp/dai-brain-sessions',
+    // os.tmpdir() rather than '/tmp': on Windows the literal would resolve to
+    // C:\tmp, a directory nothing else uses and nothing cleans up.
+    sessionRoot: env.GATEWAY_SESSION_ROOT ?? join(tmpdir(), 'dai-brain-sessions'),
     prefetchTokens: int('GATEWAY_PREFETCH_TOKENS', 1000, env),
     prefetchEnabled: env.GATEWAY_PREFETCH !== 'false',
     jwtSecret: secret,

@@ -4,6 +4,7 @@ export { startChat, buildSystemPrompt, type ChatDeps, type ChatTurn } from './ch
 export { CoreClient, CoreUnavailable } from './core-client.js';
 export { Semaphore } from './runner/semaphore.js';
 export { ClaudeCliRunner, RunnerError } from './runner/claude-cli.js';
+export { resolveRunner, type ResolvedRunner } from './runner/resolve.js';
 export type { Runner, RunRequest, StreamLine } from './runner/types.js';
 export { StreamTranslator, parseCitations } from './sse/translate.js';
 export { SessionStore, type Conversation } from './sessions/store.js';
