@@ -3,9 +3,20 @@ import { join } from 'node:path';
 
 export interface GatewayConfig {
   port: number;
-  databaseUrl: string;
-  coreUrl: string;
-  mcpUrl: string;
+  /**
+   * Postgres, or null for the personal setup.
+   *
+   * Null is not a degraded mode. Shared Postgres is what lets the Gateway run
+   * more than one instance over one person's memory; one person on one machine
+   * has no second instance, so it would be a server running for nobody.
+   */
+  databaseUrl: string | null;
+  /** Local conversation store, used when databaseUrl is null. */
+  sqlitePath: string;
+  /** Brain Core, or null when memory comes from an MCP server instead. */
+  coreUrl: string | null;
+  /** Brain MCP, or null when the runner gets its memory tools from elsewhere. */
+  mcpUrl: string | null;
   /** Path to the `claude` binary. */
   claudeBin: string;
   model: string | null;
@@ -59,18 +70,29 @@ export function loadGatewayConfig(env = process.env): GatewayConfig {
     throw new Error('GATEWAY_DEV_SCOPE must not be set in production: it disables authentication.');
   }
 
+  const sessionRoot = env.GATEWAY_SESSION_ROOT ?? join(tmpdir(), 'dai-brain-sessions');
+  // 'none' rather than only the empty string: an operator turning Core off in a
+  // .env file writes a word, and an empty value reads as "not set yet".
+  const coreUrl = env.CORE_URL === 'none' || env.CORE_URL === ''
+    ? null
+    : env.CORE_URL ?? (env.DATABASE_URL ? 'http://localhost:8081' : null);
+
   return {
     port: int('GATEWAY_PORT', 8080, env),
-    databaseUrl: env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/daibrain',
-    coreUrl: env.CORE_URL ?? 'http://localhost:8081',
-    mcpUrl: env.MCP_URL ?? 'http://localhost:8082/mcp',
+    databaseUrl: env.DATABASE_URL || null,
+    sqlitePath: env.GATEWAY_SQLITE_PATH ?? join(sessionRoot, 'conversations.db'),
+    coreUrl,
+    // Tied to Core, because Brain MCP is a front for it: declaring a server
+    // that is not running does worse than nothing. The model sees the
+    // connection fail and starts discounting whatever memory it does get.
+    mcpUrl: env.MCP_URL === 'none' || env.MCP_URL === ''
+      ? null
+      : env.MCP_URL ?? (coreUrl ? 'http://localhost:8082/mcp' : null),
     claudeBin: env.CLAUDE_BIN ?? 'claude',
     model: env.CLAUDE_MODEL ?? null,
     maxConcurrency: int('GATEWAY_MAX_CONCURRENCY', 8, env),
     requestTimeoutMs: int('GATEWAY_REQUEST_TIMEOUT_MS', 300_000, env),
-    // os.tmpdir() rather than '/tmp': on Windows the literal would resolve to
-    // C:\tmp, a directory nothing else uses and nothing cleans up.
-    sessionRoot: env.GATEWAY_SESSION_ROOT ?? join(tmpdir(), 'dai-brain-sessions'),
+    sessionRoot,
     prefetchTokens: int('GATEWAY_PREFETCH_TOKENS', 1000, env),
     prefetchEnabled: env.GATEWAY_PREFETCH !== 'false',
     jwtSecret: secret,
@@ -79,7 +101,9 @@ export function loadGatewayConfig(env = process.env): GatewayConfig {
     extraMcpConfigPath: env.GATEWAY_EXTRA_MCP_CONFIG || null,
     extraAllowedTools: (env.GATEWAY_EXTRA_ALLOWED_TOOLS ?? '')
       .split(',').map((t) => t.trim()).filter(Boolean),
-    writebackEnabled: env.GATEWAY_WRITEBACK !== 'false',
+    // Write-back needs Core to reconcile into and a queue to sit in, so it is
+    // off by default in the personal setup rather than failing every turn.
+    writebackEnabled: env.GATEWAY_WRITEBACK !== 'false' && coreUrl !== null && Boolean(env.DATABASE_URL),
     writebackPollMs: int('GATEWAY_WRITEBACK_POLL_MS', 5_000, env),
     writebackModel: env.GATEWAY_WRITEBACK_MODEL ?? 'claude-haiku-4-5-20251001',
     writebackMinConfidence: Number(env.GATEWAY_WRITEBACK_MIN_CONFIDENCE ?? '0.6'),

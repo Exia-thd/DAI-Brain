@@ -5,7 +5,7 @@ import type { GatewayConfig } from './config.js';
 import { CoreClient, CoreUnavailable } from './core-client.js';
 import { RunnerError } from './runner/claude-cli.js';
 import type { Runner } from './runner/types.js';
-import type { SessionStore, Conversation } from './sessions/store.js';
+import type { SessionStore, Conversation } from './sessions/types.js';
 import { StreamTranslator } from './sse/translate.js';
 
 const SYSTEM_PREAMBLE = `You have access to this user's long-term memory through the \`memory\` MCP server.
@@ -16,7 +16,8 @@ Below is memory that was retrieved for this question before you were asked it. I
 
 export interface ChatDeps {
   config: GatewayConfig;
-  core: CoreClient;
+  /** Null when memory comes from an MCP server the runner is given instead. */
+  core: CoreClient | null;
   sessions: SessionStore;
   runner: Runner;
 }
@@ -40,7 +41,10 @@ export async function buildSystemPrompt(
   scope: Scope,
   question: string,
 ): Promise<string> {
-  if (!deps.config.prefetchEnabled) return SYSTEM_PREAMBLE;
+  // Without Core there is nothing to pre-fetch from, and that is a setup, not
+  // a failure: the model still has whatever memory tools the runner was given
+  // and calls them itself.
+  if (!deps.core || !deps.config.prefetchEnabled) return SYSTEM_PREAMBLE;
   try {
     const result = await deps.core.search(scope, {
       query: question,
@@ -134,7 +138,7 @@ async function* stream(
  * from one is how a memory store fills with half-thoughts.
  */
 async function queueWriteback(deps: ChatDeps, conversation: Conversation): Promise<void> {
-  if (!deps.config.writebackEnabled) return;
+  if (!deps.config.writebackEnabled || !deps.core) return;
   const turns = await deps.sessions.messages(conversation.id);
   if (turns.length === 0) return;
   await deps.core.ingestTranscript(conversation.scope, {

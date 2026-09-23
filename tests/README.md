@@ -23,6 +23,7 @@ any order.
 | `vector-index.test.js` | That the vector branch sees the whole store: the IVFFlat index it replaces returned 1 row of 62 while reporting itself healthy |
 | `retrieval.test.js` | The pipeline end to end against a real database |
 | `jwt.test.js` | Signature verification, `alg: none`, expiry, and that a token cannot reach a project it was not granted |
+| `sqlite-sessions.test.js` | The local conversation store: scoping, message order, and that a reopened file still knows the Claude session id |
 | `windows-runner.test.js` | How the CLI is started per platform, and that a shell is never used — the prompt is user text travelling in argv |
 | `semaphore.test.js` | Concurrency limits, cancellation while queued, no double-release |
 | `translate.test.js` | Claude's stream → the six UI events, including citations and unknown-line tolerance |

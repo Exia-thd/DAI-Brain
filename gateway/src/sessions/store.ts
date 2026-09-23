@@ -2,14 +2,9 @@ import { createHash, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import pg from 'pg';
 import type { ConversationSummary, Scope, WriteScope } from '@dai-brain/shared';
+import type { Conversation, SessionStore, TranscriptMessage } from './types.js';
 
-export interface Conversation {
-  id: string;
-  scope: WriteScope;
-  title: string;
-  claudeSessionId: string | null;
-  workdir: string;
-}
+import { workdirFor } from './workdir.js';
 
 /**
  * Conversations and their mapping to Claude sessions.
@@ -19,13 +14,16 @@ export interface Conversation {
  * that forgets every session id silently turns every ongoing conversation into
  * a new one with no history.
  */
-export class SessionStore {
+export class PostgresSessionStore implements SessionStore {
+  readonly kind = 'postgres' as const;
+
   constructor(private readonly db: pg.Pool, private readonly sessionRoot: string) {}
 
-  /** A per-conversation directory, derived so a restart lands in the same place. */
   private workdirFor(id: string): string {
-    return join(this.sessionRoot, createHash('sha256').update(id).digest('hex').slice(0, 24));
+    return workdirFor(this.sessionRoot, id);
   }
+
+  async close(): Promise<void> { await this.db.end(); }
 
   async create(scope: WriteScope, title: string): Promise<Conversation> {
     const id = `conv_${randomUUID().replace(/-/g, '').slice(0, 24)}`;
@@ -83,7 +81,7 @@ export class SessionStore {
     await this.db.query(`UPDATE conversations SET updated_at = now() WHERE id = $1`, [conversationId]);
   }
 
-  async messages(conversationId: string): Promise<{ role: 'user' | 'assistant'; content: string }[]> {
+  async messages(conversationId: string): Promise<TranscriptMessage[]> {
     const { rows } = await this.db.query<{ role: string; content: string }>(
       `SELECT role, content FROM messages WHERE conversation_id = $1 ORDER BY id`,
       [conversationId],
