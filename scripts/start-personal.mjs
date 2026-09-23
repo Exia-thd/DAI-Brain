@@ -16,7 +16,7 @@ import { existsSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
-import { findStore, resolvePlugin } from './resolve-plugin.mjs';
+import { PLUGIN_REPO, findStore, resolvePlugin, show } from './resolve-plugin.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
@@ -34,6 +34,7 @@ if (flag('help')) {
   --dir <path>       the project to chat about; the memory server finds its
                      store from here                   (default: current directory)
   --plugin <path>    where the DAI Memory plugin is, if it cannot be found
+  --install-plugin   clone and build it next to this repo when it is missing
   --no-init          do not create the plugin's store when the project has none
   --project <name>   which memory scope to use          (default: personal)
   --mcp <file>       MCP config for your memory server  (default: ./plugin-mcp.json)
@@ -60,16 +61,25 @@ const mcpPath = resolve(value('mcp', join(root, 'plugin-mcp.json')));
 
 // A config the person supplied is theirs; only a generated one is rewritten.
 if (!existsSync(mcpPath)) {
-  const plugin = resolvePlugin(value('plugin'));
-  if (!plugin.command) {
-    console.error(`[chat] cannot find the DAI Memory plugin. Looked in:
-${plugin.tried.map((t) => `         ${t}`).join('\n')}
+  let plugin = resolvePlugin(value('plugin'), root);
 
-  Install it in Claude Code:
-    /plugin marketplace add Exia-thd/DAI-memory-layer-plugin
-    /plugin install dai-memory
-  then run its setup once, or point at a checkout:
-    pnpm chat --plugin /path/to/dai-memory-layer-plugin`);
+  if (!plugin.command && flag('install-plugin')) plugin = installPlugin();
+
+  if (!plugin.command) {
+    const lines = [
+      '[chat] cannot find the DAI Memory plugin.',
+      plugin.reason ? `\n  ${plugin.reason}` : '',
+      plugin.tried?.length ? `\n  Looked in:\n${plugin.tried.map((t) => `    ${show(t)}`).join('\n')}` : '',
+      '\n  Fix it in one of three ways:',
+      '\n    1. Let this fetch and build it:',
+      '         pnpm chat --install-plugin --dir <your project>',
+      '\n    2. Point at a checkout you already have:',
+      '         pnpm chat --plugin <path to dai-memory-layer-plugin> --dir <your project>',
+      '\n    3. Install it in Claude Code, then run its setup once:',
+      '         /plugin marketplace add Exia-thd/DAI-memory-layer-plugin',
+      '         /plugin install dai-memory',
+    ];
+    console.error(lines.filter(Boolean).join('\n'));
     process.exit(1);
   }
 
@@ -78,14 +88,50 @@ ${plugin.tried.map((t) => `         ${t}`).join('\n')}
       'dai-memory': { command: plugin.command, args: plugin.args },
     },
   }, null, 2)}\n`, 'utf8');
-  console.log(`[chat] memory server: ${plugin.from}`);
+  console.log(`[chat] memory server: ${show(plugin.from)}`);
+}
+
+/**
+ * Clones and builds the plugin beside this repo.
+ *
+ * Beside rather than inside, because it is a separate project with its own
+ * updates — burying it in node_modules or a subdirectory here would make it
+ * something nobody can find again to update or to run `dai-memory` from.
+ */
+function installPlugin() {
+  const target = join(dirname(root), 'dai-memory-layer-plugin');
+  const steps = existsSync(target)
+    ? [['git', ['pull', '--ff-only'], target]]
+    : [['git', ['clone', '--depth', '1', PLUGIN_REPO, target], dirname(root)]];
+  steps.push(['pnpm', ['install'], target], ['pnpm', ['build'], target]);
+
+  console.log(`[chat] installing the DAI Memory plugin into ${show(target)}\n`);
+  for (const [command, args, cwd] of steps) {
+    const result = spawnSync(command, args, { cwd, stdio: 'inherit', shell: process.platform === 'win32' });
+    if (result.status !== 0) {
+      console.error(`\n[chat] \`${command} ${args.join(' ')}\` failed in ${show(cwd)}.`);
+      return { command: null, tried: [target], reason: 'the install did not finish' };
+    }
+  }
+  // The embedding model is a separate download and the plugin refuses to run
+  // without it, so this is part of installing rather than an extra.
+  console.log('\n[chat] downloading the embedding model (once, a few hundred MB)\n');
+  const setup = spawnSync(process.execPath, [join(target, 'bin', 'setup.mjs')], {
+    cwd: target, stdio: 'inherit',
+  });
+  if (setup.status !== 0) {
+    console.error('\n[chat] the model download failed. The plugin will not start without it.');
+    return { command: null, tried: [target], reason: 'the embedding model is missing' };
+  }
+  console.log('');
+  return resolvePlugin(target, root);
 }
 
 // The plugin finds its store by walking up from the working directory, so a
 // project without one produces "No memory store found", which reads as a
 // broken install rather than a missing step.
 if (!findStore(projectDir) && !flag('no-init')) {
-  const plugin = resolvePlugin(value('plugin'));
+  const plugin = resolvePlugin(value('plugin'), root);
   if (plugin.command) {
     console.log(`[chat] no memory store in ${projectDir} — running \`dai-memory init\` there.`);
     console.log('[chat] it scans the project and writes .memory/. Pass --no-init to skip.\n');
