@@ -173,6 +173,57 @@ claude -p "what did we decide about the database?" \
 machine's own MCP servers.
 
 
+## Giving the UI other tools (Jira, and so on)
+
+Adding a server to your own CLI with `claude mcp add` does **not** make it
+available in the web UI. The Gateway writes its own config and passes
+`--strict-mcp-config`, which deliberately ignores every MCP server configured
+on the host machine — otherwise whatever a developer once ran `claude mcp add`
+for would silently join a session serving someone else.
+
+So extra servers are named by the operator, in a file:
+
+```bash
+cat > /etc/dai-brain/extra-mcp.json <<'JSON'
+{
+  "mcpServers": {
+    "jira": {
+      "type": "http",
+      "url": "https://your-jira-mcp.example.com/mcp",
+      "headers": { "Authorization": "Bearer ..." }
+    }
+  }
+}
+JSON
+
+export GATEWAY_EXTRA_MCP_CONFIG=/etc/dai-brain/extra-mcp.json
+export GATEWAY_EXTRA_ALLOWED_TOOLS="mcp__jira__search_issues,mcp__jira__get_issue"
+```
+
+Both are required. `--allowedTools` has no wildcard for MCP, so the tool names
+have to be listed — which is not just a limitation to work around: the list is
+the audit record of what a web-facing agent may do. A server configured without
+its tools listed is reachable by nobody, which is the safe direction to fail in.
+
+Three things this deliberately does:
+
+- **`memory` cannot be shadowed.** Extra servers are merged *under* it. A config
+  file that redefined `memory` would point the memory tools at someone else's
+  endpoint, which would then be handed this user's scope header on the next
+  search.
+- **The scope header does not leak.** `X-Scope` is written onto the memory
+  server only. What credentials the Jira entry carries are the operator's to
+  set, and they are the same for every user.
+- **A missing or malformed file fails the turn, loudly.** An operator who
+  configured Jira and got a session without it would debug the prompt for an
+  hour before suspecting the config.
+
+Per-user credentials are **not** supported: this file is one set of servers for
+everyone the Gateway serves. If Jira has to act as the individual user rather
+than as one service account, that needs per-request credential injection, which
+is not built.
+
+
 ## Bootstrapping from a repository
 
 A fresh store knows nothing, and conversation memory only accumulates by having
@@ -377,7 +428,8 @@ data.
 **Gateway** — `GATEWAY_PORT`, `CORE_URL`, `MCP_URL`, `CLAUDE_BIN`,
 `CLAUDE_MODEL`, `GATEWAY_MAX_CONCURRENCY`, `GATEWAY_REQUEST_TIMEOUT_MS`,
 `GATEWAY_SESSION_ROOT`, `GATEWAY_PREFETCH_TOKENS`, `GATEWAY_JWT_SECRET`,
-`GATEWAY_DEV_SCOPE`, `GATEWAY_WRITEBACK*`.
+`GATEWAY_DEV_SCOPE`, `GATEWAY_WRITEBACK*`, `GATEWAY_EXTRA_MCP_CONFIG`,
+`GATEWAY_EXTRA_ALLOWED_TOOLS`.
 
 **MCP** — `MCP_PORT`, `CORE_URL`.
 

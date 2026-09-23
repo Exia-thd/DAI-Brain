@@ -25,4 +25,5 @@ any order.
 | `semaphore.test.js` | Concurrency limits, cancellation while queued, no double-release |
 | `translate.test.js` | Claude's stream → the six UI events, including citations and unknown-line tolerance |
 | `repo-ingest.test.js` | Markdown sectioning (fences are not headings), what is ingested and what is skipped, and that re-running does not duplicate |
+| `runner-mcp-config.test.js` | What the runner hands the CLI: that `memory` cannot be shadowed by an operator's extra config, and that a broken config fails loudly |
 | `writeback.test.js` | Extraction parsing against whatever a model emits, plus reconciliation and undo |

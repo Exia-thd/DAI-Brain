@@ -169,6 +169,57 @@ claude -p "hồi trước mình chốt dùng database nào?" \
 `--strict-mcp-config` là cờ quan trọng nhất: thiếu nó, CLI sẽ trộn thêm các MCP
 server vốn có của máy vào session.
 
+## Cho UI dùng thêm tool khác (Jira, v.v.)
+
+Thêm server vào CLI của bạn bằng `claude mcp add` **không** làm nó xuất hiện
+trong web UI. Gateway tự viết config riêng và truyền `--strict-mcp-config`, cố
+tình bỏ qua mọi MCP server cấu hình trên máy host — nếu không thì thứ mà một
+lập trình viên nào đó từng `claude mcp add` sẽ âm thầm chui vào session đang
+phục vụ người khác.
+
+Nên server phụ do người vận hành khai báo, trong một file:
+
+```bash
+cat > /etc/dai-brain/extra-mcp.json <<'JSON'
+{
+  "mcpServers": {
+    "jira": {
+      "type": "http",
+      "url": "https://your-jira-mcp.example.com/mcp",
+      "headers": { "Authorization": "Bearer ..." }
+    }
+  }
+}
+JSON
+
+export GATEWAY_EXTRA_MCP_CONFIG=/etc/dai-brain/extra-mcp.json
+export GATEWAY_EXTRA_ALLOWED_TOOLS="mcp__jira__search_issues,mcp__jira__get_issue"
+```
+
+Cả hai đều bắt buộc. `--allowedTools` không có wildcard cho MCP nên phải liệt kê
+tên tool — và đó không chỉ là hạn chế phải lách: danh sách đó chính là bản ghi
+để audit xem một agent phục vụ web được phép làm gì. Server khai báo mà không
+liệt kê tool thì không ai gọi được, và đó là hướng fail an toàn.
+
+Ba điều nó cố tình làm:
+
+- **`memory` không thể bị chiếm chỗ.** Server phụ được merge *bên dưới* nó. Một
+  file config định nghĩa lại `memory` sẽ trỏ các tool memory sang endpoint của
+  người khác, và endpoint đó sẽ nhận được header scope của user ở lần search kế
+  tiếp.
+- **Header scope không rò ra ngoài.** `X-Scope` chỉ được ghi lên server memory.
+  Entry Jira mang credential gì là việc của người vận hành, và nó giống nhau cho
+  mọi user.
+- **File thiếu hoặc sai định dạng sẽ làm fail lượt chat, một cách ồn ào.** Người
+  vận hành đã cấu hình Jira mà nhận được session không có Jira sẽ ngồi debug
+  prompt cả tiếng trước khi nghĩ tới file config.
+
+**Không** hỗ trợ credential riêng cho từng user: file này là một bộ server dùng
+chung cho mọi người mà Gateway phục vụ. Nếu Jira phải hành động với tư cách từng
+cá nhân thay vì một service account, thì cần inject credential theo từng
+request — phần đó chưa làm.
+
+
 ## Mồi dữ liệu từ một repository
 
 Store mới tinh thì không biết gì, mà memory hội thoại chỉ tích lũy được bằng
@@ -368,7 +419,8 @@ project scope mới tinh, nên chúng không bao giờ nhìn thấy dữ liệu 
 **Gateway** — `GATEWAY_PORT`, `CORE_URL`, `MCP_URL`, `CLAUDE_BIN`,
 `CLAUDE_MODEL`, `GATEWAY_MAX_CONCURRENCY`, `GATEWAY_REQUEST_TIMEOUT_MS`,
 `GATEWAY_SESSION_ROOT`, `GATEWAY_PREFETCH_TOKENS`, `GATEWAY_JWT_SECRET`,
-`GATEWAY_DEV_SCOPE`, `GATEWAY_WRITEBACK*`.
+`GATEWAY_DEV_SCOPE`, `GATEWAY_WRITEBACK*`, `GATEWAY_EXTRA_MCP_CONFIG`,
+`GATEWAY_EXTRA_ALLOWED_TOOLS`.
 
 **MCP** — `MCP_PORT`, `CORE_URL`.
 
