@@ -33,6 +33,10 @@ export interface StreamLine {
   delta?: { type?: string; text?: string; partial_json?: string };
   content_block?: { type?: string; id?: string; name?: string; input?: unknown };
   index?: number;
+  /** `system`/`init` only: the servers the CLI loaded, and whether each connected. */
+  mcp_servers?: { name?: string; status?: string }[];
+  /** `system`/`init` only: every tool name the session ended up with. */
+  tools?: unknown;
   result?: string;
   is_error?: boolean;
   total_cost_usd?: number;

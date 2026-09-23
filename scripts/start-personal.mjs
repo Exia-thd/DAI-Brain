@@ -40,6 +40,7 @@ if (flag('help')) {
   --no-init          do not create the plugin's store when the project has none
   --project <name>   which memory scope to use          (default: personal)
   --mcp <file>       MCP config for your memory server  (default: ./plugin-mcp.json)
+  --no-probe         skip the startup check that the memory server answers
   --tools <list>     comma-separated tools to allow     (default: the plugin's)
   --model <id>       model for every turn               (default: $CLAUDE_MODEL)
   --port <n>         (default 8080)
@@ -319,6 +320,78 @@ function installPlugin() {
   return resolvePlugin(target, root);
 }
 
+/**
+ * Starts the memory server and asks it what tools it has.
+ *
+ * Nothing before this point proves the server runs. The config file is written
+ * from a path that exists, the store is initialised, and both can be true of a
+ * server that exits on its first line -- which is what the plugin does when its
+ * embedding model was never downloaded. Claude Code reports that as
+ * `status: failed` on a line nobody reads, so the window opens, memory is
+ * silently absent, and the model goes looking for the project on disk instead.
+ *
+ * So this speaks the two calls that matter over stdio, and relays the server's
+ * own message when it does not answer. The plugin's message names the command
+ * that fixes it, which is better than anything this file could say about it.
+ */
+async function probeMcpServer(server) {
+  const child = spawn(server.command, server.args ?? [], {
+    cwd: projectDir, stdio: ['pipe', 'pipe', 'pipe'],
+  });
+
+  const say = (id, method, params) =>
+    child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
+
+  const noise = [];
+  child.stderr.on('data', (chunk) => noise.push(String(chunk)));
+
+  return new Promise((resolve) => {
+    let buffer = '';
+    let settled = false;
+    const done = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.kill();
+      resolve(result);
+    };
+
+    // Generous: the server loads an embedding model before it answers.
+    const timer = setTimeout(() => done({ ok: false, reason: 'it did not answer within 30s' }), 30_000);
+
+    child.on('error', (err) => done({ ok: false, reason: err.message }));
+    child.on('exit', (code) => done({
+      ok: false,
+      reason: `it exited with code ${code}`,
+      detail: [...noise, buffer].join('').trim(),
+    }));
+
+    child.stdout.on('data', (chunk) => {
+      buffer += String(chunk);
+      let split;
+      while ((split = buffer.indexOf('\n')) !== -1) {
+        const line = buffer.slice(0, split);
+        buffer = buffer.slice(split + 1);
+        let message;
+        try { message = JSON.parse(line); } catch { continue; }
+        if (message.id === 1) {
+          child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })}\n`);
+          say(2, 'tools/list', {});
+        } else if (message.id === 2) {
+          const tools = message.result?.tools ?? [];
+          done({ ok: true, tools: tools.map((t) => t.name) });
+        }
+      }
+    });
+
+    say(1, 'initialize', {
+      protocolVersion: '2024-11-05',
+      capabilities: {},
+      clientInfo: { name: 'dai-brain-preflight', version: '0' },
+    });
+  });
+}
+
 // The plugin finds its store by walking up from the working directory, so a
 // project without one produces "No memory store found", which reads as a
 // broken install rather than a missing step.
@@ -338,13 +411,22 @@ if (!findStore(projectDir) && !flag('no-init')) {
   }
 }
 
-const DEFAULT_TOOLS = [
-  'mcp__dai-memory__dai_memory_search',
-  'mcp__dai-memory__dai_memory_why',
-  'mcp__dai-memory__dai_memory_get',
-  'mcp__dai-memory__dai_memory_neighbors',
-  'mcp__dai-memory__dai_memory_write',
-].join(',');
+/*
+ * The whole memory server, not a list of its tools.
+ *
+ * This was five hand-written tool names. The plugin exposes twenty, so the
+ * other fifteen -- `dai_memory_map`, `dai_memory_constraints`,
+ * `dai_memory_impact` and the rest -- were denied. A denied memory tool does
+ * not make the model give up on the question; it makes it look somewhere else,
+ * which here meant Read and Bash, and those are blocked too. The visible
+ * symptom was a chat window that answered "No such tool available: Bash"
+ * instead of answering from memory.
+ *
+ * `mcp__<server>__*` is the documented way to say "every tool this server has"
+ * in an allow rule, and it cannot drift out of date the way a copied list can.
+ * The server segment must be glob-free, which is why the name is spelled out.
+ */
+const DEFAULT_TOOLS = 'mcp__dai-memory__*';
 
 const env = {
   ...process.env,
@@ -371,6 +453,31 @@ const entry = join(root, 'gateway', 'dist', 'server-cli.js');
 if (!existsSync(entry)) {
   console.error(`[chat] ${entry} is missing. Run: pnpm install && pnpm build`);
   process.exit(1);
+}
+
+/*
+ * The last thing before the window opens, because it is the one check that
+ * fails after everything else has passed.
+ */
+if (!flag('no-probe')) {
+  const configured = JSON.parse(readFileSync(mcpPath, 'utf8')).mcpServers ?? {};
+  for (const [name, server] of Object.entries(configured)) {
+    // An `http` server is somebody else's process; there is nothing to start.
+    if (!server?.command) continue;
+    const probe = await probeMcpServer(server);
+    if (probe.ok) {
+      const shown = probe.tools.slice(0, 4).join(', ');
+      console.log(`[chat] ${name}: ${probe.tools.length} tools (${shown}`
+        + `${probe.tools.length > 4 ? ', …' : ''})`);
+    } else {
+      console.error(`\n[chat] the ${name} server did not start: ${probe.reason}.`);
+      if (probe.detail) {
+        console.error(probe.detail.split('\n').map((l) => `    ${l}`).join('\n'));
+      }
+      console.error(`[chat] the chat will open, but it will have no memory from ${name}.`);
+      console.error('[chat] pass --no-probe to skip this check.\n');
+    }
+  }
 }
 
 console.log(`[chat] project:  ${env.GATEWAY_PROJECT_DIR}`);

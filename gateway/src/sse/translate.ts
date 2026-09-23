@@ -1,7 +1,16 @@
-import type { BrainEvent, Citation } from '@dai-brain/shared';
+import { errorEvent, type BrainEvent, type Citation } from '@dai-brain/shared';
 import type { StreamLine } from '../runner/types.js';
 
 const MEMORY_TOOL = /^mcp__memory__/;
+
+/**
+ * Any memory server's tools, not just Brain MCP's.
+ *
+ * Brain MCP names them `memory_*` and the DAI memory plugin names them
+ * `dai_memory_*`, so this asks whether a tool came from something calling
+ * itself memory rather than from one specific server.
+ */
+const ANY_MEMORY_TOOL = /^mcp__[\w-]*memory[\w-]*__/;
 
 export interface TranslateResult {
   events: BrainEvent[];
@@ -29,6 +38,9 @@ export class StreamTranslator {
   private assistantText = '';
   /** toolId -> name, so a result can be labelled when it arrives. */
   private readonly toolNames = new Map<string, string>();
+  private sawInit = false;
+  /** Memory tools the session actually got, from the init line. */
+  private memoryToolNames: string[] = [];
   private inputTokens = 0;
   private outputTokens = 0;
   private costUsd: number | null = null;
@@ -38,15 +50,14 @@ export class StreamTranslator {
 
   get claudeSessionId(): string | null { return this.sessionId; }
   get text(): string { return this.assistantText; }
+  get memoryTools(): readonly string[] { return this.memoryToolNames; }
 
   translate(line: StreamLine): BrainEvent[] {
     if (typeof line.session_id === 'string') this.sessionId = line.session_id;
 
     switch (line.type) {
       case 'system':
-        // `init` and friends carry the session id (captured above) and nothing
-        // the user needs to see.
-        return [];
+        return this.fromInit(line);
 
       case 'assistant':
         return this.fromAssistantMessage(line);
@@ -83,6 +94,55 @@ export class StreamTranslator {
       default:
         return [];
     }
+  }
+
+  /**
+   * The init line is the only place the CLI says whether memory came up.
+   *
+   * It was discarded, and that is how a chat window spent a session answering
+   * from nothing: the memory server failed to start, every tool call was
+   * refused, and the only sign of it was the model changing the subject. A
+   * retrieval path that falls back has to name itself, and this is the one
+   * moment that information exists.
+   *
+   * An unreachable memory server is reported as an error rather than a note.
+   * The answer that follows is ungrounded, which is the failure this whole
+   * system is built to make visible, and marking the turn failed also keeps
+   * its transcript out of write-back -- memory should not learn from a turn
+   * that could not read memory.
+   */
+  private fromInit(line: StreamLine): BrainEvent[] {
+    // `system` covers more than init, and a resumed session repeats it.
+    if (line.subtype !== 'init' || this.sawInit) return [];
+    this.sawInit = true;
+
+    const servers = Array.isArray(line.mcp_servers) ? line.mcp_servers : [];
+    const tools = Array.isArray(line.tools) ? line.tools.filter((t): t is string => typeof t === 'string') : [];
+    this.memoryToolNames = tools.filter((t) => ANY_MEMORY_TOOL.test(t));
+
+    const events: BrainEvent[] = [];
+    for (const server of servers) {
+      const status = typeof server?.status === 'string' ? server.status : 'unknown';
+      if (status === 'connected') continue;
+      events.push(errorEvent(
+        'upstream_failed',
+        `The ${server?.name ?? 'unnamed'} MCP server did not connect (${status}), `
+        + 'so this answer is not grounded in memory.',
+      ));
+    }
+
+    // Servers up but no memory tools means the allow list and the server
+    // disagree about what the tools are called -- the failure that looks
+    // exactly like an empty memory.
+    if (servers.length > 0 && events.length === 0 && this.memoryToolNames.length === 0) {
+      events.push(errorEvent(
+        'upstream_failed',
+        `The memory server connected but this session has no memory tools. `
+        + `It offered: ${servers.map((s) => s?.name ?? '?').join(', ')}. `
+        + 'Check that the allowed tools name that server.',
+      ));
+    }
+    return events;
   }
 
   private fromAssistantMessage(line: StreamLine): BrainEvent[] {

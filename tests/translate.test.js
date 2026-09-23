@@ -145,3 +145,71 @@ test('parseCitations tolerates text that is not a memory block', () => {
   assert.deepEqual(parseCitations('just some prose'), []);
   assert.deepEqual(parseCitations(''), []);
 });
+
+// ---------------------------------------------------------------------------
+// The init line
+// ---------------------------------------------------------------------------
+
+const INIT = (extra) => ({ type: 'system', subtype: 'init', session_id: 'sess_1', ...extra });
+
+test('a connected memory server is reported as nothing at all', () => {
+  const { events, translator } = collect([INIT({
+    mcp_servers: [{ name: 'dai-memory', status: 'connected' }],
+    tools: ['Read', 'mcp__dai-memory__dai_memory_search', 'mcp__dai-memory__dai_memory_map'],
+  })]);
+  assert.deepEqual(events, []);
+  assert.deepEqual([...translator.memoryTools], [
+    'mcp__dai-memory__dai_memory_search',
+    'mcp__dai-memory__dai_memory_map',
+  ]);
+});
+
+test('a memory server that did not connect says so, instead of answering from nothing', () => {
+  // The whole failure this exists for: the server dies at startup, every tool
+  // call is refused, and without this the only sign is a vaguer answer.
+  const { events } = collect([INIT({
+    mcp_servers: [{ name: 'dai-memory', status: 'failed' }],
+    tools: ['Read'],
+  })]);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].type, 'error');
+  assert.match(events[0].message, /dai-memory MCP server did not connect \(failed\)/);
+  assert.match(events[0].message, /not grounded in memory/);
+});
+
+test('a server that is up but exposes no memory tools is its own failure', () => {
+  // An allow list that names tools the server does not have looks exactly like
+  // an empty memory store from the outside.
+  const { events } = collect([INIT({
+    mcp_servers: [{ name: 'dai-memory', status: 'connected' }],
+    tools: ['Read', 'Glob'],
+  })]);
+  assert.equal(events.length, 1);
+  assert.match(events[0].message, /no memory tools/);
+  assert.match(events[0].message, /dai-memory/);
+});
+
+test('both memory server naming conventions are recognised', () => {
+  const { translator } = collect([INIT({
+    mcp_servers: [{ name: 'memory', status: 'connected' }],
+    tools: ['mcp__memory__memory_search', 'mcp__dai-memory__dai_memory_why', 'mcp__jira__search'],
+  })]);
+  assert.deepEqual([...translator.memoryTools],
+    ['mcp__memory__memory_search', 'mcp__dai-memory__dai_memory_why']);
+});
+
+test('no MCP servers configured is a setup, not a fault', () => {
+  const { events } = collect([INIT({ mcp_servers: [], tools: ['Read'] })]);
+  assert.deepEqual(events, []);
+});
+
+test('init is read once, so a resumed session does not repeat the warning', () => {
+  const failing = INIT({ mcp_servers: [{ name: 'dai-memory', status: 'failed' }], tools: [] });
+  const { events } = collect([failing, failing]);
+  assert.equal(events.length, 1);
+});
+
+test('a system line that is not init is still ignored', () => {
+  const { events } = collect([{ type: 'system', subtype: 'compact_boundary' }]);
+  assert.deepEqual(events, []);
+});

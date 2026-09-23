@@ -8,11 +8,29 @@ import type { Runner } from './runner/types.js';
 import type { SessionStore, Conversation } from './sessions/types.js';
 import { StreamTranslator } from './sse/translate.js';
 
-const SYSTEM_PREAMBLE = `You have access to this user's long-term memory through the \`memory\` MCP server.
+/*
+ * Written to be true whether or not a pre-fetch happened.
+ *
+ * The old preamble ended with "Below is memory that was retrieved for this
+ * question" and was also used on the path where nothing is pre-fetched, so the
+ * model was told to read memory that was not there. What it did instead was go
+ * looking for the project on disk -- Read on a directory, Bash -- which is both
+ * blocked and not the point. The pre-fetch sentence now only exists when there
+ * is a pre-fetch to introduce.
+ *
+ * The tool names are described rather than listed because the server is the
+ * operator's choice: Brain MCP calls them `memory_*`, the plugin calls them
+ * `dai_memory_*`, and naming one of them here would misdirect the other setup.
+ */
+const SYSTEM_PREAMBLE = `You have access to this user's long-term memory through MCP tools whose names contain \`memory\` — \`memory_search\` and \`memory_write\`, or \`dai_memory_search\` and \`dai_memory_write\`, depending on which memory server is connected. List what you have and use it.
 
-Search it before answering anything that might depend on an earlier conversation — a past decision, a stated preference, a project convention. When you use a memory, cite its id so the user can check it. When the user states a decision, a preference, or a durable fact, write it to memory.
+Those tools are how you learn about this user and their project. You cannot explore the project yourself: this is a chat window, not a coding session, and the file and shell tools are unavailable by design. If a question depends on the project, search memory rather than trying to read, list, or run anything — and if memory has no answer, say that it has no answer instead of guessing.
 
-Below is memory that was retrieved for this question before you were asked it. It may be enough on its own; if it is not, search for more.`;
+Search before answering anything that might depend on an earlier conversation: a past decision, a stated preference, a project convention. When you use a memory, cite its id so the user can check it. When the user states a decision, a preference, or a durable fact, write it to memory.`;
+
+/** Appended only when a pre-fetch actually produced something to read. */
+const PREFETCH_INTRO = 'Below is memory that was retrieved for this question before you were '
+  + 'asked it. It may be enough on its own; if it is not, search for more.';
 
 export interface ChatDeps {
   config: GatewayConfig;
@@ -54,7 +72,7 @@ export async function buildSystemPrompt(
     if (result.citations.length === 0) {
       return `${SYSTEM_PREAMBLE}\n\n(No memory matched this question in advance. Search if you need to.)`;
     }
-    return `${SYSTEM_PREAMBLE}\n\n${result.context}`;
+    return `${SYSTEM_PREAMBLE}\n\n${PREFETCH_INTRO}\n\n${result.context}`;
   } catch (err) {
     if (!(err instanceof CoreUnavailable)) throw err;
     // Worth saying out loud: a Gateway quietly answering without memory looks
@@ -131,7 +149,13 @@ async function* stream(
 
     for await (const line of lines) {
       for (const event of translator.translate(line)) {
-        if (event.type === 'error') failed = true;
+        if (event.type === 'error') {
+          failed = true;
+          // Also to the terminal: the person running `pnpm chat` is watching
+          // it, and a memory server that never came up is a setup problem they
+          // fix there, not in the browser.
+          console.warn(`[gateway] ${event.message}`);
+        }
         if (event.type === 'message.done') {
           // Recorded before the event reaches the client, so a client that
           // hangs up on the last frame still leaves the spend accounted for.
