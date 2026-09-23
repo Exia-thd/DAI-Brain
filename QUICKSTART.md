@@ -120,9 +120,10 @@ That one command does the rest: it finds the plugin, writes `plugin-mcp.json`
 pointing at it, runs `dai-memory init` if the project has no store yet, and
 starts the window.
 
-**Plugin not installed?** Add `--install-plugin`: it clones the plugin beside
-this repo, runs `pnpm install` and `pnpm build`, then downloads the embedding
-model.
+**Plugin not installed?** It **asks**, right there in the terminal, and does
+it if you press Enter: clones the plugin beside this repo, runs `pnpm install`
+and `pnpm build`, then downloads the embedding model. `--install-plugin` skips
+the question.
 
 ```bash
 pnpm chat --install-plugin --dir /path/to/your/project --project inventory
