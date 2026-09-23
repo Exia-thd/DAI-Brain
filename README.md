@@ -48,6 +48,57 @@ GATEWAY_DEV_SCOPE=acme/me/daibrain pnpm gateway        # :8080
 `GATEWAY_DEV_SCOPE` disables authentication and runs every request as one
 user. It is refused when `NODE_ENV=production`.
 
+## Why a database at all
+
+The plugin this grew out of needs no server: it stores everything in files under
+the project directory. That is the right answer for what it is — one person, one
+machine, one checkout.
+
+DAI Brain is a different shape, and the difference is what costs you a database:
+
+- **It is multi-user by construction.** Scope is `tenant → user → project`, and
+  the isolation tests exist because more than one person's memory lives in the
+  same store.
+- **Two processes write to it.** Core owns memory; the Gateway owns
+  conversations, Claude session ids and the write-back queue. An embedded file
+  store does not give two processes concurrent writes.
+- **The queue needs real locking.** The write-back worker claims jobs with
+  `FOR UPDATE SKIP LOCKED`, so a second worker is safe without either knowing
+  about the other.
+- **The Gateway is stateless on purpose**, so it can run more than one instance.
+  That only works if the state is somewhere both instances can see.
+
+If you only ever want memory for yourself on one machine, that is real cost for
+no benefit, and the plugin is the better tool for that shape. The two are not
+competitors — see *Bootstrapping from a repository* for running them together.
+
+### pgvector is optional
+
+You need Postgres. You do **not** need pgvector. Without it the embedding
+column is `real[]` and the vector branch scans it exactly — linear in the number
+of items, and it says so in the fusion report and in `/health` rather than
+pretending otherwise.
+
+Measured on the eval set, on a store of this size:
+
+| | recall@10 | MRR@10 | p95 |
+|---|---|---|---|
+| with pgvector (HNSW) | 90.7% | 0.839 | 7ms |
+| without, exact scan | 89.6% | 0.834 | 9ms |
+
+The whole suite passes in both modes. The difference is inside the run-to-run
+noise at forty items; it is the growth curve that differs, not the answer — an
+exact scan is correct at any size and slow at a large one.
+
+To confirm the fallback on a machine that has pgvector installed:
+
+```bash
+DAI_DISABLE_PGVECTOR=true pnpm migrate
+```
+
+A fallback nobody has run is a fallback nobody should trust.
+
+
 ## How a question is answered
 
 1. The UI posts to `/chat`. The Gateway verifies the JWT and decides the
@@ -506,7 +557,7 @@ data.
 **Core** — `DATABASE_URL`, `CORE_PORT`, `DAI_EMBEDDING_PROVIDER`,
 `DAI_EMBEDDING_MODEL`, `DAI_EMBEDDING_DIMS`, `DAI_SEARCH_MAX_TOKENS`,
 `DAI_SEARCH_LIMIT`, `DAI_GRAPH_DEPTH`, `DAI_DEDUPE_THRESHOLD`,
-`DAI_SEARCH_CACHE_TTL_MS`.
+`DAI_SEARCH_CACHE_TTL_MS`, `DAI_DISABLE_PGVECTOR`.
 
 **Gateway** — `GATEWAY_PORT`, `CORE_URL`, `MCP_URL`, `CLAUDE_BIN`,
 `CLAUDE_MODEL`, `GATEWAY_MAX_CONCURRENCY`, `GATEWAY_REQUEST_TIMEOUT_MS`,

@@ -47,6 +47,56 @@ GATEWAY_DEV_SCOPE=acme/me/daibrain pnpm gateway        # :8080
 `GATEWAY_DEV_SCOPE` tắt hoàn toàn xác thực và chạy mọi request dưới một user.
 Nó bị từ chối khi `NODE_ENV=production`.
 
+## Tại sao lại cần database
+
+Plugin mà cái này lớn lên từ đó không cần server: nó lưu mọi thứ thành file
+ngay trong thư mục project. Đó là câu trả lời đúng cho hình dạng của nó — một
+người, một máy, một checkout.
+
+DAI Brain là hình dạng khác, và chính khác biệt đó là cái khiến bạn phải trả giá
+bằng một database:
+
+- **Nó nhiều người dùng ngay từ thiết kế.** Scope là `tenant → user → project`,
+  và bộ test cách ly tồn tại vì memory của nhiều người nằm chung một store.
+- **Hai tiến trình cùng ghi vào nó.** Core giữ memory; Gateway giữ hội thoại,
+  session id của Claude và hàng đợi write-back. Một store dạng file nhúng không
+  cho hai tiến trình ghi đồng thời.
+- **Hàng đợi cần khoá thật.** Worker write-back nhận job bằng
+  `FOR UPDATE SKIP LOCKED`, nên chạy worker thứ hai vẫn an toàn mà không cái nào
+  cần biết cái kia tồn tại.
+- **Gateway cố tình stateless** để chạy được nhiều instance. Điều đó chỉ đúng khi
+  state nằm ở nơi cả hai instance đều thấy.
+
+Nếu bạn chỉ muốn memory cho riêng mình trên một máy, thì đó là cái giá thật cho
+một lợi ích không có, và plugin mới là công cụ đúng cho hình dạng đó. Hai bên
+không cạnh tranh nhau — xem mục *Mồi dữ liệu từ một repository* để chạy song song.
+
+### pgvector là tuỳ chọn
+
+Bạn cần Postgres. Bạn **không** cần pgvector. Không có nó thì cột embedding là
+`real[]` và nhánh vector quét chính xác — tuyến tính theo số item, và nó nói rõ
+điều đó trong fusion report lẫn `/health` chứ không giả vờ.
+
+Đo trên bộ eval, với store cỡ này:
+
+| | recall@10 | MRR@10 | p95 |
+|---|---|---|---|
+| có pgvector (HNSW) | 90.7% | 0.839 | 7ms |
+| không, quét chính xác | 89.6% | 0.834 | 9ms |
+
+Toàn bộ test pass ở cả hai chế độ. Chênh lệch nằm trong nhiễu giữa các lần chạy ở
+mức 40 item; cái khác nhau là đường cong khi lớn lên, không phải câu trả lời —
+quét chính xác thì đúng ở mọi kích cỡ và chậm ở kích cỡ lớn.
+
+Muốn tự kiểm chứng đường fallback trên máy đã cài sẵn pgvector:
+
+```bash
+DAI_DISABLE_PGVECTOR=true pnpm migrate
+```
+
+Một đường fallback chưa ai chạy là đường fallback không ai nên tin.
+
+
 ## Một câu hỏi được trả lời như thế nào
 
 1. UI gọi `POST /chat`. Gateway verify JWT rồi quyết định scope. Đây là nơi duy
@@ -493,7 +543,7 @@ project scope mới tinh, nên chúng không bao giờ nhìn thấy dữ liệu 
 **Core** — `DATABASE_URL`, `CORE_PORT`, `DAI_EMBEDDING_PROVIDER`,
 `DAI_EMBEDDING_MODEL`, `DAI_EMBEDDING_DIMS`, `DAI_SEARCH_MAX_TOKENS`,
 `DAI_SEARCH_LIMIT`, `DAI_GRAPH_DEPTH`, `DAI_DEDUPE_THRESHOLD`,
-`DAI_SEARCH_CACHE_TTL_MS`.
+`DAI_SEARCH_CACHE_TTL_MS`, `DAI_DISABLE_PGVECTOR`.
 
 **Gateway** — `GATEWAY_PORT`, `CORE_URL`, `MCP_URL`, `CLAUDE_BIN`,
 `CLAUDE_MODEL`, `GATEWAY_MAX_CONCURRENCY`, `GATEWAY_REQUEST_TIMEOUT_MS`,

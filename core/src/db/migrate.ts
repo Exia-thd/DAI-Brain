@@ -31,7 +31,13 @@ export async function migrate(db: Db, dims: number): Promise<MigrationResult> {
   )`);
 
   let vector = false;
+  // An operator on a managed Postgres that cannot install extensions wants to
+  // know the fallback works before committing to it, and a fallback nobody has
+  // run is a fallback nobody should trust. This makes it reachable on a machine
+  // where pgvector happens to be installed.
+  const forced = process.env.DAI_DISABLE_PGVECTOR === 'true';
   try {
+    if (forced) throw new Error('DAI_DISABLE_PGVECTOR=true');
     await db.query('CREATE EXTENSION IF NOT EXISTS vector');
     vector = await hasPgvector(db);
   } catch (err) {
