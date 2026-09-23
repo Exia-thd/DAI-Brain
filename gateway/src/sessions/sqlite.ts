@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
+import type { DatabaseSync } from 'node:sqlite';
 import type { ConversationSummary, Scope, WriteScope } from '@dai-brain/shared';
 import type { Conversation, SessionStore, TranscriptMessage, TurnUsage } from './types.js';
 import { workdirFor } from './workdir.js';
@@ -18,11 +19,33 @@ import { workdirFor } from './workdir.js';
  * Timestamps are ISO strings. SQLite has no date type, and a number would
  * require every read to remember which unit it was written in.
  */
+/**
+ * `node:sqlite` arrived in Node 22 and does not exist before it.
+ *
+ * Required lazily so the module can be imported on Node 20 -- where the
+ * Postgres path works perfectly well -- and so the failure, when it comes, says
+ * what to do. The built-in error is `ERR_UNKNOWN_BUILTIN_MODULE: No such
+ * built-in module: node:sqlite`, which tells the person nothing about their
+ * Node version being the problem.
+ */
+function loadSqlite(): { DatabaseSync: new (path: string) => DatabaseSync } {
+  try {
+    return createRequire(import.meta.url)('node:sqlite');
+  } catch {
+    throw new Error(
+      `The local conversation store needs node:sqlite, which arrived in Node 22. `
+      + `This is Node ${process.versions.node}.\n`
+      + '  Upgrade to Node 22 or later, or set DATABASE_URL to use Postgres instead.',
+    );
+  }
+}
+
 export class SqliteSessionStore implements SessionStore {
   readonly kind = 'sqlite' as const;
   private readonly db: DatabaseSync;
 
   constructor(path: string, private readonly sessionRoot: string) {
+    const { DatabaseSync } = loadSqlite();
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
     this.db = new DatabaseSync(path);
     // WAL so a reader (the UI listing conversations) is not blocked by the

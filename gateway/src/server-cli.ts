@@ -38,10 +38,14 @@ if (!config.model) {
     + 'model.\n[gateway]            Set CLAUDE_MODEL to something cheaper if this is a personal chat window.',
   );
 }
+console.log(`[gateway]   claude auth: ${config.isolateClaudeConfig
+  ? 'ANTHROPIC_API_KEY, isolated config dir per session'
+  : "your own `claude` login (no API key set)"}`);
 if (!process.env.ANTHROPIC_API_KEY) {
   console.warn(
-    '[gateway]   WARNING: ANTHROPIC_API_KEY is not set, so the runner bills whatever account the '
-    + 'CLI is\n[gateway]            logged into — including your own subscription quota.',
+    '[gateway]   WARNING: ANTHROPIC_API_KEY is not set, so the runner reuses your own `claude` '
+    + 'login\n[gateway]            and bills your subscription quota. Run `claude` once to sign in '
+    + 'if you have not.',
   );
 }
 

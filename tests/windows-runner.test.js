@@ -81,3 +81,37 @@ test('the local store path defaults under the session root', async () => {
   assert.match(config.sqlitePath, /conversations\.db$/);
   assert.ok(config.sqlitePath.startsWith('/srv/brain'));
 });
+
+// --- which credential the runner uses -------------------------------------
+
+test('without an API key the runner keeps your own claude login', async () => {
+  // The bug this pins down: pointing the CLI at a fresh, empty
+  // CLAUDE_CONFIG_DIR when that directory holds the only credential there is.
+  // It surfaces as "Invalid API key · Please run /login", which sends people
+  // hunting for a key problem.
+  const { loadGatewayConfig } = await import('../gateway/dist/index.js');
+  const personal = loadGatewayConfig({ GATEWAY_DEV_SCOPE: 'me/me/p', CORE_URL: 'none' });
+  assert.equal(personal.isolateClaudeConfig, false);
+});
+
+test('with an API key each session gets its own config directory', async () => {
+  const { loadGatewayConfig } = await import('../gateway/dist/index.js');
+  const shared = loadGatewayConfig({
+    GATEWAY_DEV_SCOPE: 'me/me/p', CORE_URL: 'none', ANTHROPIC_API_KEY: 'sk-ant-test',
+  });
+  assert.equal(shared.isolateClaudeConfig, true, 'one person login must not become the next person');
+});
+
+test('the choice can be forced either way', async () => {
+  const { loadGatewayConfig } = await import('../gateway/dist/index.js');
+  const forcedOff = loadGatewayConfig({
+    GATEWAY_DEV_SCOPE: 'me/me/p', CORE_URL: 'none',
+    ANTHROPIC_API_KEY: 'sk-ant-test', GATEWAY_ISOLATE_CLAUDE_CONFIG: 'false',
+  });
+  assert.equal(forcedOff.isolateClaudeConfig, false);
+
+  const forcedOn = loadGatewayConfig({
+    GATEWAY_DEV_SCOPE: 'me/me/p', CORE_URL: 'none', GATEWAY_ISOLATE_CLAUDE_CONFIG: 'true',
+  });
+  assert.equal(forcedOn.isolateClaudeConfig, true);
+});
