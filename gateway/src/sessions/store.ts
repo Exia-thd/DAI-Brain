@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import pg from 'pg';
 import type { ConversationSummary, Scope, WriteScope } from '@dai-brain/shared';
-import type { Conversation, SessionStore, TranscriptMessage } from './types.js';
+import type { Conversation, SessionStore, TranscriptMessage, TurnUsage } from './types.js';
 
 import { workdirFor } from './workdir.js';
 
@@ -87,6 +87,23 @@ export class PostgresSessionStore implements SessionStore {
       [conversationId],
     );
     return rows.map((r) => ({ role: r.role as 'user' | 'assistant', content: r.content }));
+  }
+
+  async recordUsage(conversationId: string, usage: TurnUsage): Promise<void> {
+    await this.db.query(
+      `INSERT INTO turn_usage (conversation_id, input_tokens, output_tokens, cost_usd)
+       VALUES ($1,$2,$3,$4)`,
+      [conversationId, usage.inputTokens, usage.outputTokens, usage.costUsd],
+    );
+  }
+
+  async spend(conversationId: string): Promise<{ costUsd: number; turns: number }> {
+    const { rows } = await this.db.query<{ cost: string | null; turns: string }>(
+      `SELECT coalesce(sum(cost_usd), 0)::text AS cost, count(*)::text AS turns
+         FROM turn_usage WHERE conversation_id = $1`,
+      [conversationId],
+    );
+    return { costUsd: Number(rows[0]?.cost ?? 0), turns: Number(rows[0]?.turns ?? 0) };
   }
 
   async list(scope: Scope, limit = 50): Promise<ConversationSummary[]> {

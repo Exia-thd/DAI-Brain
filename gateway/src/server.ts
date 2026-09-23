@@ -141,6 +141,10 @@ export function createGatewayRouter(
       id: conversation.id,
       title: conversation.title,
       messages: await sessions.messages(conversation.id),
+      // What this conversation has cost. The UI shows it, because a number
+      // nobody is shown is a number nobody acts on.
+      spend: await sessions.spend(conversation.id),
+      costCeilingUsd: config.maxConversationCostUsd,
     };
   });
 

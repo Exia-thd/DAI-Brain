@@ -44,6 +44,14 @@ export interface GatewayConfig {
   writebackPollMs: number;
   writebackModel: string;
   writebackMinConfidence: number;
+  /**
+   * What one conversation may spend before the Gateway stops answering it.
+   *
+   * Zero disables the check. It is not zero by default: a Gateway that spawns
+   * a billable subprocess per message with nothing watching is a runaway loop
+   * away from an empty account, and the person who finds out is the one paying.
+   */
+  maxConversationCostUsd: number;
 }
 
 function int(name: string, fallback: number, env: NodeJS.ProcessEnv): number {
@@ -107,5 +115,6 @@ export function loadGatewayConfig(env = process.env): GatewayConfig {
     writebackPollMs: int('GATEWAY_WRITEBACK_POLL_MS', 5_000, env),
     writebackModel: env.GATEWAY_WRITEBACK_MODEL ?? 'claude-haiku-4-5-20251001',
     writebackMinConfidence: Number(env.GATEWAY_WRITEBACK_MIN_CONFIDENCE ?? '0.6'),
+    maxConversationCostUsd: Number(env.GATEWAY_MAX_CONVERSATION_COST_USD ?? '5'),
   };
 }

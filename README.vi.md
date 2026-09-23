@@ -62,8 +62,11 @@ cat > plugin-mcp.json <<'JSON'
 { "mcpServers": { "dai-memory": { "command": "dai-memory", "args": ["mcp"] } } }
 JSON
 
-# 3. Chạy cửa sổ chat.
+# 3. Chạy cửa sổ chat. Một lệnh; nó tự tạo plugin-mcp.json nếu chưa có.
 pnpm install && pnpm build
+pnpm chat --project myproject
+
+# Hoặc tự gõ đầy đủ từng biến:
 CORE_URL=none \
 GATEWAY_DEV_SCOPE=me/me/myproject \
 GATEWAY_MAX_CONCURRENCY=1 \
@@ -109,6 +112,43 @@ nó đã nói đúng như vậy trong câu trả lời lúc tôi test.
 Nếu terminal là đủ thì bạn không cần gì cả. `/plugin install dai-memory` cho bạn
 memory ngay trong Claude Code hôm nay, không Gateway, không UI, không database.
 Phần setup ở trên chỉ đáng bỏ công nếu bạn thật sự muốn cái cửa sổ chat.
+
+
+## Nó tốn bao nhiêu, và cái gì chặn lại
+
+Mỗi tin nhắn spawn nguyên một phiên Claude CLI. Đó là tiền thật trừ vào tài
+khoản thật, và cần nói thẳng ra vì trong chính quá trình test dự án này, nó đã
+âm thầm tiêu hết quota subscription của tác giả cho tới lúc chạm giới hạn.
+
+Ba thứ rút ra từ đó, và cả ba giờ đều bật mặc định:
+
+- **Trần chi phí cho mỗi hội thoại.** `GATEWAY_MAX_CONVERSATION_COST_USD` mặc
+  định `5`. Vượt trần, Gateway từ chối lượt đó **trước khi** spawn bất cứ thứ gì
+  — vì sau khi tiến trình chạy thì tiền đã tiêu rồi. Tính theo từng hội thoại
+  chứ không phải toàn cục, vì một vụ chạy loạn gần như luôn là một hội thoại bị
+  lặp, mà trần toàn cục sẽ kéo sập mọi thứ còn lại. Đặt `0` để tắt.
+- **Mỗi lượt đều được ghi lại**, theo từng lượt chứ không phải tổng, vì một con
+  số tổng không trả lời được câu duy nhất người ta hỏi sau đó: hội thoại nào đã
+  chạy loạn. UI hiện chi phí đang chạy ở thanh trạng thái, và chuyển sang màu
+  cam khi vượt 80% trần.
+- **Hai cảnh báo lúc khởi động.** Không đặt `CLAUDE_MODEL` nghĩa là mọi lượt
+  chạy bằng model mặc định của CLI — model đắt nhất. Không đặt
+  `ANTHROPIC_API_KEY` nghĩa là runner tính tiền vào tài khoản mà CLI đang đăng
+  nhập, với hầu hết mọi người chính là subscription của họ.
+
+Cho một cửa sổ chat cá nhân:
+
+```bash
+export ANTHROPIC_API_KEY=...          # tách billing khỏi quota của chính bạn
+export CLAUDE_MODEL=claude-sonnet-5   # hoặc rẻ hơn
+```
+
+API key quan trọng ngay cả khi chỉ một người dùng: nó khiến một con bug trong
+Gateway không thể khoá bạn khỏi chính Claude Code mà bạn đang dùng để sửa nó.
+
+**Write-back nhân đôi hoá đơn** — thêm một lần gọi model cho mỗi hội thoại. Nó
+tắt sẵn ở chế độ cá nhân và bật ở bản đầy đủ; đặt `GATEWAY_WRITEBACK=false` để
+tắt luôn ở bản đầy đủ.
 
 
 ## Tại sao lại cần database
@@ -613,7 +653,8 @@ project scope mới tinh, nên chúng không bao giờ nhìn thấy dữ liệu 
 `CLAUDE_MODEL`, `GATEWAY_MAX_CONCURRENCY`, `GATEWAY_REQUEST_TIMEOUT_MS`,
 `GATEWAY_SESSION_ROOT`, `GATEWAY_PREFETCH_TOKENS`, `GATEWAY_JWT_SECRET`,
 `GATEWAY_DEV_SCOPE`, `GATEWAY_WRITEBACK*`, `GATEWAY_EXTRA_MCP_CONFIG`,
-`GATEWAY_EXTRA_ALLOWED_TOOLS`, `GATEWAY_SQLITE_PATH`. Bỏ trống `DATABASE_URL`
+`GATEWAY_EXTRA_ALLOWED_TOOLS`, `GATEWAY_SQLITE_PATH`,
+`GATEWAY_MAX_CONVERSATION_COST_USD`. Bỏ trống `DATABASE_URL`
 sẽ dùng store SQLite; `CORE_URL=none` bỏ luôn Brain Core và Brain MCP.
 
 **MCP** — `MCP_PORT`, `CORE_URL`.
