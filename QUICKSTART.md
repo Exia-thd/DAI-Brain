@@ -141,7 +141,10 @@ project's memory apart from another's.
 **Expect:** a block like this.
 
 ```
-[chat] wrote /.../plugin-mcp.json — edit it if your memory server differs
+[chat] DAI Brain 61c17d9
+[chat] memory server: ~/dai-memory-layer-plugin/bin/dai-memory.mjs
+[chat] dai-memory: 20 tools (dai_memory_search, dai_memory_why, dai_memory_get, dai_memory_neighbors, …)
+[chat] project:  C:\Project\Inventory
 [chat] http://localhost:8080
 
 [gateway] dai-brain-gateway 0.1.0 on :8080
@@ -150,15 +153,24 @@ project's memory apart from another's.
 [gateway]   mcp:         none
 [gateway]   runner:      claude (max 1 concurrent)
 [gateway]   write-back:  off
-[gateway]   extra tools: mcp__dai-memory__dai_memory_search, ...
+[gateway]   extra mcp:   /path/to/plugin-mcp.json
+[gateway]   extra tools: mcp__dai-memory__*
+[gateway]   ui:          /path/to/DAI-Brain/ui/public
+[gateway]   runs in:     C:\Project\Inventory
+[gateway]   refused:     Bash, Write, Edit, MultiEdit, NotebookEdit, KillShell
+[gateway]   AUTH DISABLED — every request runs as me/me/inventory
 [gateway]   model:       claude-sonnet-5
 [gateway]   cost ceiling: $5.00 per conversation
 [gateway]   claude auth: your own `claude` login (no API key set)
-[gateway]   AUTH DISABLED — every request runs as me/me/inventory
 ```
 
-Three lines worth reading:
+Four lines worth reading:
 
+- `dai-memory: N tools` — the memory server started and answered. **If this line
+  is missing**, or reads `the dai-memory server did not start`, memory is not
+  connected and everything below will be answered from nothing. The message
+  printed under it names the fix; usually the plugin's `bin/setup.mjs` was never
+  run.
 - `claude auth:` — "your own `claude` login" means it uses your CLI login. If
   you have never run `claude` and signed in, the first turn fails with
   `Invalid API key · Please run /login`.

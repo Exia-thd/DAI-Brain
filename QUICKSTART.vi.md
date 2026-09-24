@@ -138,7 +138,10 @@ các project.
 **Mong đợi:** một khối như thế này.
 
 ```
-[chat] wrote /.../plugin-mcp.json — edit it if your memory server differs
+[chat] DAI Brain 61c17d9
+[chat] memory server: ~/dai-memory-layer-plugin/bin/dai-memory.mjs
+[chat] dai-memory: 20 tools (dai_memory_search, dai_memory_why, dai_memory_get, dai_memory_neighbors, …)
+[chat] project:  C:\Project\Inventory
 [chat] http://localhost:8080
 
 [gateway] dai-brain-gateway 0.1.0 on :8080
@@ -147,14 +150,23 @@ các project.
 [gateway]   mcp:         none
 [gateway]   runner:      claude (max 1 concurrent)
 [gateway]   write-back:  off
-[gateway]   extra tools: mcp__dai-memory__dai_memory_search, ...
+[gateway]   extra mcp:   /path/to/plugin-mcp.json
+[gateway]   extra tools: mcp__dai-memory__*
+[gateway]   ui:          /path/to/DAI-Brain/ui/public
+[gateway]   runs in:     C:\Project\Inventory
+[gateway]   refused:     Bash, Write, Edit, MultiEdit, NotebookEdit, KillShell
+[gateway]   AUTH DISABLED — every request runs as me/me/inventory
 [gateway]   model:       claude-sonnet-5
 [gateway]   cost ceiling: $5.00 per conversation
-[gateway]   AUTH DISABLED — every request runs as me/me/inventory
+[gateway]   claude auth: your own `claude` login (no API key set)
 ```
 
-Hai dòng cần đọc kỹ:
+Bốn dòng cần đọc kỹ:
 
+- `dai-memory: N tools` — memory server đã khởi động và trả lời được. **Nếu
+  thiếu dòng này**, hoặc thấy `the dai-memory server did not start`, thì memory
+  chưa kết nối và mọi thứ bên dưới sẽ được trả lời từ con số không. Thông báo in
+  ngay dưới đó nói cách sửa; thường là chưa chạy `bin/setup.mjs` của plugin.
 - `claude auth:` — ghi `your own claude login` nghĩa là nó dùng login của bạn.
   Nếu bạn chưa từng chạy `claude` để đăng nhập, lượt đầu sẽ báo
   `Invalid API key · Please run /login`.
