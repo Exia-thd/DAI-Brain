@@ -4,28 +4,29 @@
  * `prefers-color-scheme` handles the person who never touches the toggle;
  * `[data-theme]` handles the one who does, and has to win over the media query.
  * Deriving one palette from the other with filters or `color-mix` was tried and
- * loses the warm greys, which is most of what makes this readable for an hour.
+ * flattens the blue out of the greys, which is most of what makes this readable
+ * for an hour.
  */
 :root {
-  --bg: #faf9f5;
+  --bg: #f7f8fa;
   --panel: #ffffff;
-  --panel-2: #f2f0e9;
-  --panel-3: #e9e6dd;
-  --border: #e3e0d8;
-  --border-strong: #d2cec3;
-  --text: #1f1e1d;
-  --text-2: #3d3b38;
-  --muted: #6e6a62;
-  --faint: #9d988e;
-  --accent: #c15f3c;
+  --panel-2: #f0f2f6;
+  --panel-3: #e6eaf1;
+  --border: #dde1e8;
+  --border-strong: #c6cddb;
+  --text: #1a1d23;
+  --text-2: #39404e;
+  --muted: #666e7d;
+  --faint: #949cab;
+  --accent: #2f6fd0;
   --accent-text: #ffffff;
-  --accent-dim: #f6ebe5;
-  --ok: #3f8f6d;
-  --warn: #9a7112;
-  --danger: #b4443f;
-  --code-bg: #f4f2ec;
-  --code-head: #ebe8e0;
-  --shadow: 0 1px 2px rgba(31, 30, 29, 0.05), 0 8px 24px rgba(31, 30, 29, 0.06);
+  --accent-dim: #dce8fb;
+  --ok: #1f8a68;
+  --warn: #8a6d10;
+  --danger: #c4444c;
+  --code-bg: #f2f4f8;
+  --code-head: #e7ecf3;
+  --shadow: 0 1px 2px rgba(26, 29, 35, 0.06), 0 8px 24px rgba(26, 29, 35, 0.07);
   --radius: 12px;
   --radius-lg: 20px;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
@@ -34,48 +35,48 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #262624;
-    --panel: #1f1e1d;
-    --panel-2: #30302e;
-    --panel-3: #3a3a37;
-    --border: #3a3a37;
-    --border-strong: #4c4b47;
-    --text: #f0eee6;
-    --text-2: #dedad0;
-    --muted: #a19c92;
-    --faint: #7e7a72;
-    --accent: #d97757;
-    --accent-text: #241511;
-    --accent-dim: #3a2721;
-    --ok: #6cc4a1;
+    --bg: #0f1115;
+    --panel: #161a21;
+    --panel-2: #1c212a;
+    --panel-3: #242b36;
+    --border: #272e39;
+    --border-strong: #3a4454;
+    --text: #e6e9ef;
+    --text-2: #ccd3de;
+    --muted: #8b95a5;
+    --faint: #6b7585;
+    --accent: #6aa9ff;
+    --accent-text: #0b1524;
+    --accent-dim: #24354f;
+    --ok: #4ec9a5;
     --warn: #e0b341;
-    --danger: #e8776f;
-    --code-bg: #171716;
-    --code-head: #232322;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.28);
+    --danger: #ef6b73;
+    --code-bg: #0b0d11;
+    --code-head: #13171e;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.32);
   }
 }
 
 :root[data-theme="dark"] {
-  --bg: #262624;
-  --panel: #1f1e1d;
-  --panel-2: #30302e;
-  --panel-3: #3a3a37;
-  --border: #3a3a37;
-  --border-strong: #4c4b47;
-  --text: #f0eee6;
-  --text-2: #dedad0;
-  --muted: #a19c92;
-  --faint: #7e7a72;
-  --accent: #d97757;
-  --accent-text: #241511;
-  --accent-dim: #3a2721;
-  --ok: #6cc4a1;
+  --bg: #0f1115;
+  --panel: #161a21;
+  --panel-2: #1c212a;
+  --panel-3: #242b36;
+  --border: #272e39;
+  --border-strong: #3a4454;
+  --text: #e6e9ef;
+  --text-2: #ccd3de;
+  --muted: #8b95a5;
+  --faint: #6b7585;
+  --accent: #6aa9ff;
+  --accent-text: #0b1524;
+  --accent-dim: #24354f;
+  --ok: #4ec9a5;
   --warn: #e0b341;
-  --danger: #e8776f;
-  --code-bg: #171716;
-  --code-head: #232322;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.28);
+  --danger: #ef6b73;
+  --code-bg: #0b0d11;
+  --code-head: #13171e;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.32);
 }
 
 * { box-sizing: border-box; }
@@ -123,13 +124,18 @@ body {
 .brand-mark .logo { font-size: 19px; line-height: 1; }
 .brand h1 { font-size: 15px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
 
+/*
+ * Tinted rather than solid. It is the only always-visible button in the
+ * sidebar, and at full accent it reads as the loudest thing on a page whose
+ * content is meant to be the answer.
+ */
 .new-chat {
   width: 100%; display: flex; align-items: center; gap: 8px;
   padding: 9px 12px; border-radius: 10px;
-  background: var(--accent); color: var(--accent-text);
-  border: none; font-size: 13.5px; font-weight: 550;
+  background: var(--accent-dim); color: var(--accent);
+  border: 1px solid var(--border); font-size: 13.5px; font-weight: 550;
 }
-.new-chat:hover { filter: brightness(1.06); }
+.new-chat:hover { border-color: var(--accent); }
 .new-chat .plus { font-size: 16px; line-height: 1; opacity: 0.85; }
 
 .tabs { display: flex; gap: 3px; padding: 4px 16px 12px; }
