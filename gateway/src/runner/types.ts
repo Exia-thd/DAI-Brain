@@ -9,6 +9,15 @@ export interface RunRequest {
   /** Injected verbatim via --append-system-prompt. */
   systemPrompt: string;
   workdir: string;
+  /**
+   * Directories the tools may read beyond the working directory.
+   *
+   * This turn's attachments live in one of them. They cannot go in the project
+   * directory -- that is the person's own repository, not somewhere a chat
+   * window writes -- and a file outside the working directory is unreadable
+   * without saying so explicitly.
+   */
+  addDirs: string[];
   signal: AbortSignal;
 }
 

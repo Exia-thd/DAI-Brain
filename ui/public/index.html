@@ -53,13 +53,17 @@
     </div>
 
     <form id="composer" class="composer">
-      <div class="composer-box">
+      <div id="composer-box" class="composer-box">
+        <div id="attachments" class="attachments" hidden></div>
         <textarea id="input" rows="1" placeholder="Ask anything…"></textarea>
         <div class="composer-bar">
-          <span class="hint">Enter to send · Shift+Enter for a newline</span>
+          <input id="file-input" type="file" multiple hidden>
+          <button id="attach" type="button" class="icon-btn" title="Attach files" aria-label="Attach files">＋</button>
+          <span class="hint">Enter to send · Shift+Enter for a newline · drop or paste files</span>
           <button id="cancel" type="button" class="stop" hidden>■ Stop</button>
           <button id="send" type="submit" class="send" title="Send" aria-label="Send">↑</button>
         </div>
+        <div id="drop-hint" class="drop-hint" hidden>Drop to attach</div>
       </div>
     </form>
   </main>

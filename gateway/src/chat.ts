@@ -1,5 +1,8 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import {
-  HttpError, errorEvent, type BrainEvent, type ChatRequest, type Scope, type WriteScope,
+  HttpError, errorEvent, humanSize, parseAttachments,
+  type BrainEvent, type ChatRequest, type DecodedAttachment, type Scope, type WriteScope,
 } from '@dai-brain/shared';
 import type { GatewayConfig } from './config.js';
 import { CoreClient, CoreUnavailable } from './core-client.js';
@@ -24,7 +27,7 @@ import { StreamTranslator } from './sse/translate.js';
  */
 const SYSTEM_PREAMBLE = `You have access to this user's long-term memory through MCP tools whose names contain \`memory\` — \`memory_search\` and \`memory_write\`, or \`dai_memory_search\` and \`dai_memory_write\`, depending on which memory server is connected. List what you have and use it.
 
-Those tools are how you learn about this user and their project. You cannot explore the project yourself: this is a chat window, not a coding session, and the file and shell tools are unavailable by design. If a question depends on the project, search memory rather than trying to read, list, or run anything — and if memory has no answer, say that it has no answer instead of guessing.
+Those tools are how you learn about this user and their project. You cannot explore the project yourself: this is a chat window, not a coding session, and the shell tools are unavailable by design. If a question depends on the project, search memory rather than trying to list or run anything — and if memory has no answer, say that it has no answer instead of guessing. The exception is a file the user attaches to a message: read that, at the path given to you.
 
 Search before answering anything that might depend on an earlier conversation: a past decision, a stated preference, a project convention. When you use a memory, cite its id so the user can check it. When the user states a decision, a preference, or a durable fact, write it to memory.`;
 
@@ -82,6 +85,43 @@ export async function buildSystemPrompt(
   }
 }
 
+/**
+ * Writes this turn's attachments next to the conversation, and says where.
+ *
+ * Next to the conversation rather than in the project directory, which is the
+ * person's own repository: a chat window does not get to leave files in it. The
+ * consequence is that the files sit outside the CLI's working directory, so the
+ * directory has to be handed over explicitly -- see `addDirs` -- or the read is
+ * refused with an error that looks like the file is missing.
+ *
+ * The names are already sanitised by `parseAttachments`; this only joins them.
+ */
+async function writeAttachments(
+  workdir: string,
+  attachments: DecodedAttachment[],
+): Promise<{ dir: string | null; note: string; names: string[] }> {
+  if (attachments.length === 0) return { dir: null, note: '', names: [] };
+
+  const dir = join(workdir, 'uploads');
+  await mkdir(dir, { recursive: true });
+
+  const lines: string[] = [];
+  for (const attachment of attachments) {
+    const path = join(dir, attachment.name);
+    await writeFile(path, attachment.bytes);
+    lines.push(`  ${path}  (${attachment.type}, ${humanSize(attachment.bytes.length)})`);
+  }
+
+  // Appended to the user's message rather than the system prompt: it describes
+  // this turn, and a resumed session would otherwise carry a previous turn's
+  // attachment list into one that has none.
+  const note = `\n\n---\nThe user attached ${attachments.length === 1 ? 'this file' : 'these files'} `
+    + `to this message. Read ${attachments.length === 1 ? 'it' : 'them'} with the Read tool `
+    + `before answering:\n${lines.join('\n')}`;
+
+  return { dir, note, names: attachments.map((a) => a.name) };
+}
+
 export async function startChat(
   deps: ChatDeps,
   scope: WriteScope,
@@ -99,10 +139,27 @@ export async function startChat(
 
   await assertWithinBudget(deps, conversation.id);
 
-  const systemPrompt = await buildSystemPrompt(deps, scope, message);
-  await deps.sessions.appendMessage(conversation.id, 'user', message);
+  const attachments = parseAttachments(request.attachments, {
+    maxCount: deps.config.maxAttachments,
+    maxTotalBytes: deps.config.maxAttachmentBytes,
+  });
+  const written = await writeAttachments(conversation.workdir, attachments);
 
-  return { conversation, events: stream(deps, conversation, message, systemPrompt, signal) };
+  const systemPrompt = await buildSystemPrompt(deps, scope, message);
+
+  // The transcript records what the person wrote plus what they attached, so
+  // reopening the conversation shows the same thing the model was given. The
+  // paths are not in it: they name a directory on this machine, and they mean
+  // nothing to a reader a week later.
+  const transcript = written.names.length > 0
+    ? `${message}\n\n[attached: ${written.names.join(', ')}]`
+    : message;
+  await deps.sessions.appendMessage(conversation.id, 'user', transcript);
+
+  return {
+    conversation,
+    events: stream(deps, conversation, message + written.note, systemPrompt, signal, written.dir),
+  };
 }
 
 /**
@@ -133,6 +190,7 @@ async function* stream(
   message: string,
   systemPrompt: string,
   signal: AbortSignal,
+  uploadDir: string | null,
 ): AsyncIterable<BrainEvent> {
   const translator = new StreamTranslator(conversation.id);
   let failed = false;
@@ -144,6 +202,7 @@ async function* stream(
       resumeSessionId: conversation.claudeSessionId,
       systemPrompt,
       workdir: conversation.workdir,
+      addDirs: uploadDir ? [uploadDir] : [],
       signal,
     });
 

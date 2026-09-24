@@ -190,6 +190,8 @@ Try these in order:
    need transactions.` → a **saving to memory** chip appears.
 3. Click **+ New chat**, then ask `What database does this project use, and why?`
    → a **searching memory** chip appears, and the answer gives the reason back.
+4. Drag a log file onto the composer (or press **＋**) and ask `what went wrong here?`
+   → the file shows as a chip, then a **Read** chip, then the answer.
 
 Step 3 is the real test: a fresh conversation with no context, answered from
 memory.
@@ -303,6 +305,8 @@ tells you which branch contributed nothing, and **why**.
 | `The dai-memory MCP server did not connect` in the chat | same thing, reported mid-turn | as above; the answer you are reading is not grounded in memory |
 | No memory tools at all | the plugin setup has not finished | run `dai-memory --help`; the MCP command is `serve`, not `mcp` |
 | `No memory store found at or above ...` | the turn ran somewhere without a store | pass `--dir` pointing at the project you ran `dai-memory init` in |
+| `attachments total more than ...` | one message carried too many bytes | send fewer files, or `pnpm chat` with `GATEWAY_MAX_ATTACHMENT_BYTES` set higher |
+| An attached file is not mentioned in the answer | the model was not asked to read it | the paths go in the message automatically; if `Read` is in `GATEWAY_DISALLOWED_TOOLS` it cannot open them |
 | `This conversation has spent $5.00...` | the cost ceiling | click **+ New chat**, or `pnpm chat --budget 20` |
 | The model says it does not trust a memory result | an MCP server is declared but not running | remove it from the config; a declared-but-dead server is worse than none |
 | `vectorIndex: degraded — legacy IVFFlat` | the old index | `pnpm migrate` |

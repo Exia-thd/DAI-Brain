@@ -194,6 +194,39 @@ reasonable; writing and executing are not, so `Bash`, `Write`, `Edit`,
 `GATEWAY_DISALLOWED_TOOLS` changes the list.
 
 
+### Attaching files
+
+The composer takes files: the **＋** button, drag and drop onto it, or paste.
+They are written next to the conversation, under
+`<session root>/<conversation id>/uploads/`, and the model is told the paths and
+asked to read them.
+
+Next to the conversation, not into the project directory: `--dir` points at the
+person's own repository, and a chat window does not get to leave files in it.
+The consequence is that the uploads sit outside the CLI's working directory, so
+the Gateway passes `--add-dir <that directory>` — without it the read is refused
+with an error that reads as though the file is missing.
+
+Limits, both settable:
+
+| | Default | Variable |
+|---|---|---|
+| Files per message | 10 | `GATEWAY_MAX_ATTACHMENTS` |
+| Total size per message | 5 MB | `GATEWAY_MAX_ATTACHMENT_BYTES` |
+
+5 MB decoded is about 6.7 MB of base64, which fits under the router's 8 MB body
+cap. Raising it past that makes it unreachable: the request is refused for being
+too large before anything counts the attachments.
+
+The filename is never trusted. It arrives in a request body and is about to be
+joined to a path, so separators, control characters and leading dots are
+stripped before it names anything — `../../etc/passwd` becomes `etcpasswd`
+inside the conversation's own uploads directory. Two files of one name become
+`log.txt` and `log-2.txt` rather than one file.
+
+Attachments stay on disk for the life of the conversation, so a later turn that
+resumes the same session can still read them.
+
 ### What you give up, and why
 
 | | Full setup | Personal setup |
@@ -781,7 +814,8 @@ data.
 `GATEWAY_SESSION_ROOT`, `GATEWAY_PREFETCH_TOKENS`, `GATEWAY_JWT_SECRET`,
 `GATEWAY_DEV_SCOPE`, `GATEWAY_WRITEBACK*`, `GATEWAY_EXTRA_MCP_CONFIG`,
 `GATEWAY_EXTRA_ALLOWED_TOOLS`, `GATEWAY_SQLITE_PATH`,
-`GATEWAY_MAX_CONVERSATION_COST_USD`. Leaving `DATABASE_URL`
+`GATEWAY_MAX_CONVERSATION_COST_USD`, `GATEWAY_MAX_ATTACHMENTS`,
+`GATEWAY_MAX_ATTACHMENT_BYTES`. Leaving `DATABASE_URL`
 unset selects the SQLite store; `CORE_URL=none` drops Brain Core and Brain MCP.
 
 **MCP** — `MCP_PORT`, `CORE_URL`.
