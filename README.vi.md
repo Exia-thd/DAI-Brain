@@ -55,28 +55,122 @@ Nó bị từ chối khi `NODE_ENV=production`.
 Một người, một máy, memory lấy từ plugin. Không Postgres, không Brain Core,
 không Brain MCP — chỉ Gateway và giao diện chat.
 
-```bash
-# 1. Memory. Plugin lưu ngay trong thư mục project, không có gì phải chạy.
-#    /plugin marketplace add Exia-thd/DAI-memory-layer-plugin
-#    /plugin install dai-memory     (rồi chạy setup một lần của nó)
+### Cài đặt
 
-# 2. Trỏ Gateway vào đó.
+Phải có Claude CLI và đã đăng nhập trước đã: Gateway không phải LLM client, mỗi
+tin nhắn nó spawn một tiến trình `claude -p`. Cứ chạy `claude -p "ping"`, trả
+lời được là xong phần đó.
+
+**1. Lấy plugin, và chạy nốt setup của nó.** Cài plugin chỉ *copy* repo về. Nó
+không cài dependency, không compile, không tải embedding model — mà thiếu một
+trong ba thì server không chạy. Lấy kiểu nào cũng được, nhưng `bin/setup.mjs` là
+bước hay bị bỏ quên:
+
+```bash
+# Cách 1: để launcher tự tải và build (chạy luôn setup.mjs)
+pnpm chat --install-plugin --dir /path/to/your/project
+
+# Cách 2: cài trong Claude Code
+#   /plugin marketplace add Exia-thd/DAI-memory-layer-plugin
+#   /plugin install dai-memory
+# ...rồi chạy setup một lần. `pnpm chat` in ra chỗ nó tìm thấy plugin ở dòng
+# `[chat] memory server:`; cấu trúc thư mục marketplace khác nhau tuỳ hệ điều
+# hành, nên hãy đọc đường dẫn đó thay vì đoán:
+node <thư mục đó>/bin/setup.mjs
+
+# Cách 3: tự clone
+git clone https://github.com/Exia-thd/DAI-memory-layer-plugin
+node DAI-memory-layer-plugin/bin/setup.mjs
+```
+
+`setup.mjs` cần mạng và tải khoảng 130 MB model. Chạy lại thì nó làm tiếp phần
+còn thiếu.
+
+**2. Tạo store cho project.** Plugin tìm store bằng cách đi ngược lên từ thư mục
+làm việc, nên store nằm trong project chứ không nằm ở đây:
+
+```bash
+cd /path/to/your/project && dai-memory init
+
+# Không có `dai-memory` trong PATH (clone tay thì không có):
+cd /path/to/your/project && node /path/to/DAI-memory-layer-plugin/bin/dai-memory.mjs init
+```
+
+`pnpm chat` tự chạy lệnh này khi không thấy store.
+
+**3. Chạy cửa sổ chat.** Một lệnh; nó tự tạo `plugin-mcp.json` nếu chưa có:
+
+```bash
+pnpm install && pnpm build
+pnpm chat --dir /path/to/your/project --project myproject
+```
+
+Hoặc tự gõ đầy đủ từng biến:
+
+```bash
 cat > plugin-mcp.json <<'JSON'
 { "mcpServers": { "dai-memory": { "command": "dai-memory", "args": ["serve"] } } }
 JSON
 
-# 3. Chạy cửa sổ chat. Một lệnh; nó tự tạo plugin-mcp.json nếu chưa có.
-pnpm install && pnpm build
-pnpm chat --dir /path/to/your/project --project myproject
-
-# Hoặc tự gõ đầy đủ từng biến:
 CORE_URL=none \
 GATEWAY_DEV_SCOPE=me/me/myproject \
 GATEWAY_MAX_CONCURRENCY=1 \
 GATEWAY_EXTRA_MCP_CONFIG=./plugin-mcp.json \
-GATEWAY_EXTRA_ALLOWED_TOOLS=mcp__dai-memory__dai_memory_search,mcp__dai-memory__dai_memory_why,mcp__dai-memory__dai_memory_write \
+GATEWAY_EXTRA_ALLOWED_TOOLS='mcp__dai-memory__*' \
+GATEWAY_PROJECT_DIR=/path/to/your/project \
 pnpm gateway
 ```
+
+Danh sách tool cho phép là **cả server**, không phải liệt kê từng tool. Plugin
+có hai mươi tool; viết tay năm cái bạn nhớ nghĩa là mười lăm cái còn lại bị từ
+chối lúc gọi — mà một tool memory bị từ chối không làm model bỏ cuộc, nó làm
+model quay sang đọc file của bạn. `mcp__<server>__*` là dạng chính thức và không
+bao giờ lệch.
+
+### Kiểm tra memory có thật sự chạy không
+
+`pnpm chat` khởi động từng stdio server trong file MCP config, bắt tay MCP và
+hỏi nó có tool gì, **trước khi** mở bất cứ thứ gì. Mấy dòng đầu nói hết:
+
+```
+[chat] DAI Brain e5e28e1
+[chat] memory server: ~/dai-memory-layer-plugin/bin/dai-memory.mjs
+[chat] dai-memory: 20 tools (dai_memory_search, dai_memory_why, dai_memory_get, dai_memory_neighbors, …)
+[chat] project:  /path/to/your/project
+[chat] http://localhost:8080
+```
+
+Dòng thứ ba mới là dòng quan trọng. Khi hỏng, thông báo của chính server được in
+nguyên văn, và nó nói luôn cách sửa:
+
+```
+[chat] the dai-memory server did not start: it exited with code 1.
+    The embedding model is not downloaded: config.json, tokenizer.json,
+    tokenizer_config.json, onnx/model_quantized.onnx missing under
+    ~/.memory/models/Xenova/paraphrase-multilingual-MiniLM-L12-v2.
+    Run `node bin/setup.mjs` with network access.
+[chat] the chat will open, but it will have no memory from dai-memory.
+[chat] pass --no-probe to skip this check.
+```
+
+Server chết muộn hơn, hoặc chết sau khi đã qua được bước kiểm tra, thì bị bắt
+giữa lượt chat: dòng khởi động của chính Claude báo trạng thái từng MCP server,
+và trạng thái khác `connected` sẽ thành một thông báo đỏ trong khung chat, thay
+vì một câu trả lời nhạt hơn mà không ai biết vì sao.
+
+> The dai-memory MCP server did not connect (failed), so this answer is not
+> grounded in memory.
+
+Lượt đó cũng bị loại khỏi write-back. Memory không nên học từ một lượt không đọc
+được memory.
+
+| Bạn thấy gì | Nghĩa là gì |
+|---|---|
+| `dai-memory: 20 tools (…)` | memory đã sống, hỏi thoải mái |
+| `did not start: it exited with code 1` | đọc thông báo in kèm — thường là chưa chạy `setup.mjs` |
+| `did not start: it did not answer within 30s` | server bị treo; chạy tay đúng lệnh đó để xem vì sao |
+| `connected but this session has no memory tools` | allow list đang gọi tên một server khác với server đang chạy |
+| `No such tool available: Bash`, hoặc model đi đọc file | memory không với tới được nên model đi tìm chỗ khác |
 
 Mở <http://localhost:8080>. Hội thoại nằm trong một file SQLite dưới session
 root (dùng `node:sqlite`, không thêm dependency nào). Tab Memory tự biến mất, vì

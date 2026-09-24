@@ -56,28 +56,122 @@ user. It is refused when `NODE_ENV=production`.
 One person, one machine, memory from the plugin. No Postgres, no Brain Core, no
 Brain MCP — just the Gateway and the chat UI.
 
-```bash
-# 1. Memory. The plugin stores in the project directory; nothing to run.
-#    /plugin marketplace add Exia-thd/DAI-memory-layer-plugin
-#    /plugin install dai-memory     (then its one-time setup)
+### Set it up
 
-# 2. Point the Gateway at it.
+The Claude CLI has to exist and be signed in before any of this: the Gateway is
+not an LLM client, it spawns `claude -p` for every message. `claude -p "ping"`
+answering is the check.
+
+**1. Get the plugin, and finish its setup.** A plugin install copies the
+repository. It does not install dependencies, compile it, or download the
+embedding model — and the server does not start without all three. Whichever
+way you get the files, `bin/setup.mjs` is the step people skip:
+
+```bash
+# Either: let the launcher fetch and build it for you (does setup.mjs too)
+pnpm chat --install-plugin --dir /path/to/your/project
+
+# Or: install it in Claude Code
+#   /plugin marketplace add Exia-thd/DAI-memory-layer-plugin
+#   /plugin install dai-memory
+# ...then run its setup once. `pnpm chat` prints where it found the plugin on
+# its `[chat] memory server:` line; the marketplace layout differs per platform,
+# so read that path rather than guessing one:
+node <that directory>/bin/setup.mjs
+
+# Or: your own checkout
+git clone https://github.com/Exia-thd/DAI-memory-layer-plugin
+node DAI-memory-layer-plugin/bin/setup.mjs
+```
+
+`setup.mjs` needs network access and downloads about 130 MB of embedding model.
+Re-running it finishes whatever is left.
+
+**2. Give the project a store.** The plugin finds its store by walking up from
+the working directory, so it belongs in the project, not here:
+
+```bash
+cd /path/to/your/project && dai-memory init
+
+# No `dai-memory` on PATH (a hand-made checkout does not install one):
+cd /path/to/your/project && node /path/to/DAI-memory-layer-plugin/bin/dai-memory.mjs init
+```
+
+`pnpm chat` runs this for you when it finds no store.
+
+**3. Run the chat window.** One command; it writes `plugin-mcp.json` if missing:
+
+```bash
+pnpm install && pnpm build
+pnpm chat --dir /path/to/your/project --project myproject
+```
+
+Or spell every variable out yourself:
+
+```bash
 cat > plugin-mcp.json <<'JSON'
 { "mcpServers": { "dai-memory": { "command": "dai-memory", "args": ["serve"] } } }
 JSON
 
-# 3. Run the chat window. One command; it writes plugin-mcp.json if missing.
-pnpm install && pnpm build
-pnpm chat --dir /path/to/your/project --project myproject
-
-# Or spell every variable out yourself:
 CORE_URL=none \
 GATEWAY_DEV_SCOPE=me/me/myproject \
 GATEWAY_MAX_CONCURRENCY=1 \
 GATEWAY_EXTRA_MCP_CONFIG=./plugin-mcp.json \
-GATEWAY_EXTRA_ALLOWED_TOOLS=mcp__dai-memory__dai_memory_search,mcp__dai-memory__dai_memory_why,mcp__dai-memory__dai_memory_write \
+GATEWAY_EXTRA_ALLOWED_TOOLS='mcp__dai-memory__*' \
+GATEWAY_PROJECT_DIR=/path/to/your/project \
 pnpm gateway
 ```
+
+The allowed tools are the **whole server**, not a list of its tools. The plugin
+exposes twenty; a hand-written list of the five you remember means the other
+fifteen are denied at call time, and a denied memory tool does not make the
+model give up — it makes it try to read your files instead. `mcp__<server>__*`
+is the documented form and cannot go stale.
+
+### Checking that memory actually works
+
+`pnpm chat` starts each stdio server from the MCP config, completes the MCP
+handshake and asks it for its tools, before opening anything. The first lines
+tell you where you stand:
+
+```
+[chat] DAI Brain e5e28e1
+[chat] memory server: ~/dai-memory-layer-plugin/bin/dai-memory.mjs
+[chat] dai-memory: 20 tools (dai_memory_search, dai_memory_why, dai_memory_get, dai_memory_neighbors, …)
+[chat] project:  /path/to/your/project
+[chat] http://localhost:8080
+```
+
+That third line is the one that matters. When it fails instead, the server's own
+message is relayed, and it names the fix:
+
+```
+[chat] the dai-memory server did not start: it exited with code 1.
+    The embedding model is not downloaded: config.json, tokenizer.json,
+    tokenizer_config.json, onnx/model_quantized.onnx missing under
+    ~/.memory/models/Xenova/paraphrase-multilingual-MiniLM-L12-v2.
+    Run `node bin/setup.mjs` with network access.
+[chat] the chat will open, but it will have no memory from dai-memory.
+[chat] pass --no-probe to skip this check.
+```
+
+A server that dies later, or after the check passed, is caught mid-turn instead:
+Claude's own startup line reports each MCP server's status, and a status other
+than connected becomes a red message in the chat rather than a quieter answer.
+
+> The dai-memory MCP server did not connect (failed), so this answer is not
+> grounded in memory.
+
+That turn is also kept out of write-back. Memory should not learn from a turn
+that could not read memory.
+
+| What you see | What it means |
+|---|---|
+| `dai-memory: 20 tools (…)` | memory is live; ask it something |
+| `did not start: it exited with code 1` | read the relayed message — usually `setup.mjs` was never run |
+| `did not start: it did not answer within 30s` | the server is hanging; run its command by hand to see why |
+| `connected but this session has no memory tools` | the allow list names a server that is not the one running |
+| `No such tool available: Bash`, or the model reads files | memory was unreachable and the model went looking elsewhere |
 
 Open <http://localhost:8080>. Conversations go into a SQLite file under the
 session root (`node:sqlite`, so no dependency). The Memory tab removes itself,
