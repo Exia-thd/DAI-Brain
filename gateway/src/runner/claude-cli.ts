@@ -110,6 +110,7 @@ export class ClaudeCliRunner implements Runner {
       if (this.config.disallowedTools.length > 0) {
         args.push('--disallowedTools', this.config.disallowedTools.join(','));
       }
+      for (const dir of request.addDirs) args.push('--add-dir', dir);
       if (this.config.model) args.push('--model', this.config.model);
       if (request.resumeSessionId) args.push('--resume', request.resumeSessionId);
 

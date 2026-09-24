@@ -72,6 +72,10 @@ export interface GatewayConfig {
    * away from an empty account, and the person who finds out is the one paying.
    */
   maxConversationCostUsd: number;
+  /** How many files may ride along with one message. */
+  maxAttachments: number;
+  /** Total decoded bytes of those files. Base64 in a JSON body is not free. */
+  maxAttachmentBytes: number;
   /**
    * Whether each session gets its own CLAUDE_CONFIG_DIR.
    *
@@ -153,6 +157,12 @@ export function loadGatewayConfig(env = process.env): GatewayConfig {
     writebackModel: env.GATEWAY_WRITEBACK_MODEL ?? 'claude-haiku-4-5-20251001',
     writebackMinConfidence: Number(env.GATEWAY_WRITEBACK_MIN_CONFIDENCE ?? '0.6'),
     maxConversationCostUsd: Number(env.GATEWAY_MAX_CONVERSATION_COST_USD ?? '5'),
+    // 5 MB decoded, which is about 6.7 MB of base64, which fits under the
+    // router's 8 MB body cap with room for the message. Set above that and the
+    // limit becomes unreachable: the router refuses the request first, with
+    // `request body too large` instead of a message naming attachments.
+    maxAttachments: int('GATEWAY_MAX_ATTACHMENTS', 10, env),
+    maxAttachmentBytes: int('GATEWAY_MAX_ATTACHMENT_BYTES', 5 * 1024 * 1024, env),
     isolateClaudeConfig: env.GATEWAY_ISOLATE_CLAUDE_CONFIG
       ? env.GATEWAY_ISOLATE_CLAUDE_CONFIG !== 'false'
       : Boolean(env.ANTHROPIC_API_KEY),

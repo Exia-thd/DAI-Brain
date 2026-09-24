@@ -192,6 +192,38 @@ là hợp lý; ghi và thực thi thì không, nên `Bash`, `Write`, `Edit`, `Mu
 `GATEWAY_DISALLOWED_TOOLS`.
 
 
+### Đính kèm file
+
+Khung soạn nhận file: nút **＋**, kéo thả vào đó, hoặc dán. File được ghi cạnh
+hội thoại, trong `<session root>/<conversation id>/uploads/`, rồi model được cho
+biết đường dẫn và được yêu cầu đọc.
+
+Cạnh hội thoại, **không** ghi vào thư mục project: `--dir` trỏ vào repo của
+chính bạn, và một cửa sổ chat không có quyền để lại file trong đó. Hệ quả là
+file nằm ngoài thư mục làm việc của CLI, nên Gateway truyền thêm
+`--add-dir <thư mục đó>` — thiếu cờ này thì lệnh đọc bị từ chối với thông báo
+trông y như file không tồn tại.
+
+Giới hạn, đều chỉnh được:
+
+| | Mặc định | Biến |
+|---|---|---|
+| Số file mỗi tin nhắn | 10 | `GATEWAY_MAX_ATTACHMENTS` |
+| Tổng dung lượng mỗi tin nhắn | 5 MB | `GATEWAY_MAX_ATTACHMENT_BYTES` |
+
+5 MB sau giải mã tương đương khoảng 6.7 MB base64, vừa dưới mức 8 MB body của
+router. Đặt cao hơn thì giới hạn thành vô nghĩa: request bị từ chối vì quá lớn
+trước khi có ai đếm tới phần đính kèm.
+
+Tên file không bao giờ được tin. Nó đến từ request body và sắp được ghép vào một
+đường dẫn, nên dấu phân cách, ký tự điều khiển và dấu chấm đầu bị loại bỏ trước
+khi nó được dùng làm tên — `../../etc/passwd` thành `etcpasswd`, nằm trong đúng
+thư mục uploads của hội thoại đó. Hai file trùng tên thành `log.txt` và
+`log-2.txt` chứ không đè lên nhau.
+
+File đính kèm nằm lại trên đĩa suốt vòng đời hội thoại, nên lượt sau resume cùng
+session vẫn đọc được.
+
 ### Bạn mất gì, và tại sao
 
 | | Bản đầy đủ | Bản cá nhân |
@@ -764,7 +796,8 @@ project scope mới tinh, nên chúng không bao giờ nhìn thấy dữ liệu 
 `GATEWAY_SESSION_ROOT`, `GATEWAY_PREFETCH_TOKENS`, `GATEWAY_JWT_SECRET`,
 `GATEWAY_DEV_SCOPE`, `GATEWAY_WRITEBACK*`, `GATEWAY_EXTRA_MCP_CONFIG`,
 `GATEWAY_EXTRA_ALLOWED_TOOLS`, `GATEWAY_SQLITE_PATH`,
-`GATEWAY_MAX_CONVERSATION_COST_USD`. Bỏ trống `DATABASE_URL`
+`GATEWAY_MAX_CONVERSATION_COST_USD`, `GATEWAY_MAX_ATTACHMENTS`,
+`GATEWAY_MAX_ATTACHMENT_BYTES`. Bỏ trống `DATABASE_URL`
 sẽ dùng store SQLite; `CORE_URL=none` bỏ luôn Brain Core và Brain MCP.
 
 **MCP** — `MCP_PORT`, `CORE_URL`.

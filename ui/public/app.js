@@ -44,9 +44,23 @@ const state = {
   /** Running cost of the open conversation, shown in the status bar. */
   spend: null,
   costCeiling: 0,
+  /** Attachments still being read off disk. */
+  staging: 0,
 };
 
 const THEME_KEY = 'dai-brain-theme';
+
+/*
+ * Kept in step with the Gateway's defaults rather than fetched.
+ *
+ * Checking here is a courtesy -- it turns a refused round trip into an
+ * immediate sentence -- so it is allowed to be out of date. The Gateway
+ * enforces the real limits, because a client-side limit protects nobody.
+ */
+const ATTACH_LIMITS = { count: 10, totalBytes: 5 * 1024 * 1024 };
+
+/** Files staged for the next message: {name, type, size, data}. */
+state.attachments = [];
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, className, text) => {
@@ -77,12 +91,21 @@ function clearEmptyState() {
  * on purpose, and seeing their message come back reformatted is disorienting
  * in a way that seeing the model's output formatted is not.
  */
-function addMessage(role, text = '') {
+function addMessage(role, text = '', attachments = []) {
   clearEmptyState();
   const wrap = el('div', `msg ${role}`);
 
   if (role === 'user') {
-    wrap.append(el('div', 'bubble', text));
+    const bubble = el('div', 'bubble');
+    if (attachments.length > 0) {
+      const strip = el('div', 'bubble-files');
+      for (const attachment of attachments) {
+        strip.append(el('span', 'chip', `${attachment.name} · ${fileSize(attachment.size)}`));
+      }
+      bubble.append(strip);
+    }
+    bubble.append(el('div', 'bubble-text', text));
+    wrap.append(bubble);
     $('messages').append(wrap);
     scrollToBottom();
     return { wrap, raw: text };
@@ -167,8 +190,17 @@ function toolLabel(name) {
 
 async function ask(message) {
   if (state.streaming) return;
+  // Any file still being read belongs to this message.
+  await stageChain;
+  if (state.streaming) return;
   const input = $('input');
-  addMessage('user', message);
+  // Taken before the await, and cleared with the textarea: what is on screen
+  // after sending should be an empty composer, not the files just sent.
+  const attachments = state.attachments;
+  state.attachments = [];
+  renderAttachments();
+
+  addMessage('user', message, attachments);
   if (!state.conversationId) setChatTitle(message);
   input.value = '';
   input.style.height = 'auto';
@@ -182,7 +214,11 @@ async function ask(message) {
     const response = await fetch('/chat', {
       method: 'POST',
       headers: api.headers({ accept: 'text/event-stream' }),
-      body: JSON.stringify({ conversationId: state.conversationId, message }),
+      body: JSON.stringify({
+        conversationId: state.conversationId,
+        message,
+        attachments: attachments.map(({ name, type, data }) => ({ name, type, data })),
+      }),
       signal: state.abort.signal,
     });
     if (!response.ok || !response.body) {
@@ -268,8 +304,15 @@ function showError(message) {
 
 function setStreaming(on) {
   state.streaming = on;
-  $('send').disabled = on;
+  $('send').disabled = on || state.staging > 0;
   $('cancel').hidden = !on;
+  $('attach').disabled = on;
+  const hint = document.querySelector('.hint');
+  if (hint) {
+    hint.textContent = state.staging > 0
+      ? `reading ${state.staging === 1 ? 'a file' : 'files'}…`
+      : 'Enter to send · Shift+Enter for a newline · drop or paste files';
+  }
 }
 
 /** Parses an SSE body into events. The `data:` line is the whole payload. */
@@ -293,6 +336,111 @@ async function* readSse(body) {
       }
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Attachments
+// ---------------------------------------------------------------------------
+
+function fileSize(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * Reads as a data URL, and sends the whole thing.
+ *
+ * The Gateway strips the `data:...,` prefix itself, so nothing here has to
+ * know how to take it off correctly -- and getting that wrong truncates the
+ * first bytes of every file, which is the kind of bug that only shows up on
+ * binary content.
+ */
+function readAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error(`could not read ${file.name}`));
+    reader.onload = () => resolve(reader.result);
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * Reading a file is asynchronous; pressing Enter is not.
+ *
+ * Found by attaching two files and sending immediately: the larger one had not
+ * finished reading, so the message went without it and nothing said so. Every
+ * staging run joins this chain, `ask` waits on it, and the send button is
+ * disabled while it is not empty -- so the worst case is a send that waits,
+ * rather than a file that quietly does not arrive.
+ */
+let stageChain = Promise.resolve();
+
+function stageFiles(files) {
+  state.staging += 1;
+  setStreaming(state.streaming);
+  stageChain = stageChain
+    .then(() => addFiles(files))
+    .catch((err) => showError(err.message))
+    .finally(() => {
+      state.staging -= 1;
+      setStreaming(state.streaming);
+    });
+  return stageChain;
+}
+
+async function addFiles(files) {
+  const incoming = [...files];
+  if (incoming.length === 0) return;
+
+  const staged = state.attachments;
+  if (staged.length + incoming.length > ATTACH_LIMITS.count) {
+    showError(`You can attach ${ATTACH_LIMITS.count} files to one message.`);
+    return;
+  }
+  const total = staged.reduce((sum, a) => sum + a.size, 0)
+    + incoming.reduce((sum, f) => sum + f.size, 0);
+  if (total > ATTACH_LIMITS.totalBytes) {
+    showError(`That is ${fileSize(total)} of attachments; the limit for one message is `
+      + `${fileSize(ATTACH_LIMITS.totalBytes)}.`);
+    return;
+  }
+
+  for (const file of incoming) {
+    try {
+      staged.push({
+        name: file.name || 'pasted-file',
+        type: file.type || 'application/octet-stream',
+        size: file.size,
+        data: await readAsDataUrl(file),
+      });
+      renderAttachments();
+    } catch (err) {
+      showError(err.message);
+    }
+  }
+}
+
+function renderAttachments() {
+  const box = $('attachments');
+  box.textContent = '';
+  box.hidden = state.attachments.length === 0;
+  state.attachments.forEach((attachment, index) => {
+    const chip = el('div', 'chip');
+    chip.append(
+      el('span', 'chip-name', attachment.name),
+      el('span', 'chip-size', fileSize(attachment.size)),
+    );
+    const remove = el('button', 'chip-remove', '×');
+    remove.type = 'button';
+    remove.title = `Remove ${attachment.name}`;
+    remove.addEventListener('click', () => {
+      state.attachments.splice(index, 1);
+      renderAttachments();
+    });
+    chip.append(remove);
+    box.append(chip);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -601,6 +749,55 @@ function init() {
 
   $('cancel').addEventListener('click', () => state.abort?.abort());
 
+  // --- attaching ---
+  $('attach').addEventListener('click', () => $('file-input').click());
+  $('file-input').addEventListener('change', async (event) => {
+    await stageFiles(event.target.files);
+    // Cleared so choosing the same file twice in a row still fires `change`.
+    event.target.value = '';
+  });
+
+  $('input').addEventListener('paste', (event) => {
+    const files = [...(event.clipboardData?.files ?? [])];
+    if (files.length === 0) return;
+    // Only when the clipboard carries a file. Pasting text that happens to sit
+    // beside an image on the clipboard should still paste the text.
+    event.preventDefault();
+    void stageFiles(files);
+  });
+
+  const box = $('composer-box');
+  let dragDepth = 0;
+  // Counted, not toggled: dragging over a child fires leave on the parent, and
+  // a boolean flickers the hint off every time the pointer crosses the textarea.
+  box.addEventListener('dragenter', (event) => {
+    if (![...(event.dataTransfer?.types ?? [])].includes('Files')) return;
+    event.preventDefault();
+    dragDepth += 1;
+    $('drop-hint').hidden = false;
+  });
+  box.addEventListener('dragover', (event) => {
+    if ([...(event.dataTransfer?.types ?? [])].includes('Files')) event.preventDefault();
+  });
+  box.addEventListener('dragleave', () => {
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0) $('drop-hint').hidden = true;
+  });
+  box.addEventListener('drop', (event) => {
+    if (!event.dataTransfer?.files?.length) return;
+    event.preventDefault();
+    dragDepth = 0;
+    $('drop-hint').hidden = true;
+    void stageFiles(event.dataTransfer.files);
+  });
+
+  // A file dropped anywhere else would otherwise replace the page with it.
+  for (const type of ['dragover', 'drop']) {
+    document.addEventListener(type, (event) => {
+      if (!box.contains(event.target)) event.preventDefault();
+    });
+  }
+
   $('new-chat').addEventListener('click', () => {
     state.conversationId = null;
     state.spend = null;
@@ -612,6 +809,8 @@ function init() {
       el('p', null, 'Answers are grounded in what you have told DAI Brain before.'),
     );
     $('messages').append(empty);
+    state.attachments = [];
+    renderAttachments();
     setChatTitle(null);
     toggleSidebar(false);
     switchView('chat');

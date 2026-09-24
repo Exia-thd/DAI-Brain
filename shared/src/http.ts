@@ -42,7 +42,8 @@ interface Route {
   handler: Handler;
 }
 
-const MAX_BODY_BYTES = 8 * 1024 * 1024;
+/** Exported so a caller sizing its own limits can check they fit under this. */
+export const MAX_BODY_BYTES = 8 * 1024 * 1024;
 
 export class Router {
   private readonly routes: Route[] = [];

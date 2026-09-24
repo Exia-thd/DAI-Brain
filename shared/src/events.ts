@@ -6,6 +6,7 @@
  * later -- cannot reach the UI as long as the translator still emits these.
  */
 
+import type { ChatAttachment } from './attachments.js';
 import type { Citation } from './contracts.js';
 
 export interface MessageDeltaEvent {
@@ -87,6 +88,8 @@ export interface ChatRequest {
   message: string;
   /** Pins the project within the caller's token scope. Never widens it. */
   project?: string;
+  /** Files for this turn, base64. Written beside the conversation, then read. */
+  attachments?: ChatAttachment[];
 }
 
 export interface ConversationSummary {
