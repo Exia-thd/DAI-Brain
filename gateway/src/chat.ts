@@ -4,6 +4,7 @@ import {
   HttpError, errorEvent, humanSize, parseAttachments,
   type BrainEvent, type ChatRequest, type DecodedAttachment, type Scope, type WriteScope,
 } from '@dai-brain/shared';
+import { commandName, parseCommandTable, runCommand, type CommandTable } from './commands.js';
 import type { GatewayConfig } from './config.js';
 import { CoreClient, CoreUnavailable } from './core-client.js';
 import { RunnerError } from './runner/claude-cli.js';
@@ -137,6 +138,18 @@ export async function startChat(
 
   if (!conversation) throw new Error(`no conversation ${request.conversationId} in this scope`);
 
+  // Before the budget check, deliberately: refreshing memory is exactly what
+  // somebody wants to do on a conversation that has run out of budget, and it
+  // costs nothing to run.
+  const command = commandName(message);
+  if (command) {
+    await deps.sessions.appendMessage(conversation.id, 'user', message);
+    return {
+      conversation,
+      events: runCommandTurn(deps, conversation, command, signal),
+    };
+  }
+
   await assertWithinBudget(deps, conversation.id);
 
   const attachments = parseAttachments(request.attachments, {
@@ -182,6 +195,50 @@ async function assertWithinBudget(deps: ChatDeps, conversationId: string): Promi
     + `the $${limit.toFixed(2)} ceiling. Start a new conversation, or raise `
     + 'GATEWAY_MAX_CONVERSATION_COST_USD.',
   );
+}
+
+/**
+ * A command turn: no model, no cost, same six events.
+ *
+ * The transcript keeps the output so reopening the conversation still shows
+ * what the scan said. The Claude session is not told about it -- the CLI keeps
+ * its own history, and a resumed turn has no reason to know that a scan ran.
+ */
+async function* runCommandTurn(
+  deps: ChatDeps,
+  conversation: Conversation,
+  command: string,
+  signal: AbortSignal,
+): AsyncIterable<BrainEvent> {
+  const cwd = deps.config.projectDir ?? conversation.workdir;
+  let output = '';
+  try {
+    for await (const event of runCommand(command, commandTable(deps), cwd, conversation.id, signal)) {
+      if (event.type === 'message.delta') output += event.text;
+      yield event;
+    }
+  } catch (err) {
+    yield toErrorEvent(err);
+  } finally {
+    if (output.trim().length > 0) {
+      await deps.sessions.appendMessage(conversation.id, 'assistant', output.trim()).catch(() => {});
+    }
+  }
+}
+
+/**
+ * Parsed once per process.
+ *
+ * A bad table is the operator's mistake and should be loud, but it must not be
+ * loud on every turn -- and re-reading it per request would let one edit hand
+ * two conversations different commands.
+ */
+let commandCache: { raw: string; table: CommandTable } | null = null;
+function commandTable(deps: ChatDeps): CommandTable {
+  if (commandCache?.raw !== deps.config.commands) {
+    commandCache = { raw: deps.config.commands, table: parseCommandTable(deps.config.commands) };
+  }
+  return commandCache.table;
 }
 
 async function* stream(

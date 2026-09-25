@@ -72,6 +72,13 @@ export interface GatewayConfig {
    * away from an empty account, and the person who finds out is the one paying.
    */
   maxConversationCostUsd: number;
+  /**
+   * Slash commands, as a JSON object of name -> argv.
+   *
+   * Operator configuration, never anything a message can reach: a chat message
+   * chooses which entry runs and supplies nothing to it.
+   */
+  commands: string;
   /** How many files may ride along with one message. */
   maxAttachments: number;
   /** Total decoded bytes of those files. Base64 in a JSON body is not free. */
@@ -161,6 +168,7 @@ export function loadGatewayConfig(env = process.env): GatewayConfig {
     // router's 8 MB body cap with room for the message. Set above that and the
     // limit becomes unreachable: the router refuses the request first, with
     // `request body too large` instead of a message naming attachments.
+    commands: env.GATEWAY_COMMANDS ?? '',
     maxAttachments: int('GATEWAY_MAX_ATTACHMENTS', 10, env),
     maxAttachmentBytes: int('GATEWAY_MAX_ATTACHMENT_BYTES', 5 * 1024 * 1024, env),
     isolateClaudeConfig: env.GATEWAY_ISOLATE_CLAUDE_CONFIG

@@ -1,6 +1,7 @@
 export { loadGatewayConfig, type GatewayConfig } from './config.js';
 export { startGateway, createGatewayRouter, GATEWAY_VERSION, type Gateway } from './server.js';
 export { startChat, buildSystemPrompt, type ChatDeps, type ChatTurn } from './chat.js';
+export { parseCommandTable, commandName, runCommand, type CommandTable } from './commands.js';
 export { CoreClient, CoreUnavailable } from './core-client.js';
 export { Semaphore } from './runner/semaphore.js';
 export { ClaudeCliRunner, RunnerError } from './runner/claude-cli.js';

@@ -192,6 +192,50 @@ là hợp lý; ghi và thực thi thì không, nên `Bash`, `Write`, `Edit`, `Mu
 `GATEWAY_DISALLOWED_TOOLS`.
 
 
+### Giữ memory ngang bằng với code
+
+Memory được dựng bằng một lượt scan, và không có tool MCP nào chạy được lượt
+scan đó. Nên sau `git pull`, model trả lời về repo ở trạng thái của lần scan
+gần nhất, mà **không có gì trong câu trả lời nói rằng nó đang cũ** — đây mới là
+kiểu hỏng đáng sợ, vì một câu trả lời cũ mà tự tin thì đọc y hệt một câu đúng.
+
+Hai lệnh, gõ thẳng trong khung chat:
+
+```
+/sync     quét lại project vào memory
+/pull     git pull --ff-only, rồi bạn /sync
+/help     ở đây đang có lệnh gì
+```
+
+Chúng chạy trong thư mục project, **không tốn tiền**, và **không đi qua model** —
+Gateway tự chạy rồi đẩy output vào hội thoại. `/sync` vẫn chạy được cả khi hội
+thoại đã chạm trần chi phí, đúng lúc người ta cần nó nhất.
+
+`pull` tách riêng khỏi `sync`, và là `--ff-only`: một cửa sổ chat được phép
+fast-forward một nhánh, nhưng không được tự ý tạo merge commit trong repo của
+bạn. Muốn cả hai thì `/pull` rồi `/sync`.
+
+Quét lại **không phá dữ liệu** — tôi kiểm chứng điều này trước khi xây tính năng.
+Memory ghi từ chat vẫn còn nguyên; chỉ phần do scan sinh ra mới được dựng lại.
+`dai-memory init --fresh` mới là lệnh xoá memory đã ghi, và không chỗ nào ở đây
+chạy nó.
+
+Lệnh đến từ `GATEWAY_COMMANDS`, một object JSON dạng tên → argv:
+
+```json
+{"sync": ["dai-memory", "ingest"], "pull": ["git", "pull", "--ff-only"]}
+```
+
+`pnpm chat` tự sinh ra nó từ memory server trong file MCP config, nên đổi lớp
+memory là đổi chỗ đó chứ không phải đổi Gateway. Dùng argv chứ không dùng một
+dòng lệnh, vì cách kia phải quote, mà quote chính là cách một đường dẫn có dấu
+cách biến thành hai tham số trên đúng cái hệ điều hành hay có dấu cách trong
+đường dẫn.
+
+Một tin nhắn chỉ chọn được **cái tên**. `/sync --force` hay `/sync; rm -rf /`
+không phải là lệnh — chúng là tin nhắn bình thường, và đi tới model dưới dạng
+chữ.
+
 ### Đính kèm file
 
 Khung soạn nhận file: nút **＋**, kéo thả vào đó, hoặc dán. File được ghi cạnh
@@ -797,7 +841,7 @@ project scope mới tinh, nên chúng không bao giờ nhìn thấy dữ liệu 
 `GATEWAY_DEV_SCOPE`, `GATEWAY_WRITEBACK*`, `GATEWAY_EXTRA_MCP_CONFIG`,
 `GATEWAY_EXTRA_ALLOWED_TOOLS`, `GATEWAY_SQLITE_PATH`,
 `GATEWAY_MAX_CONVERSATION_COST_USD`, `GATEWAY_MAX_ATTACHMENTS`,
-`GATEWAY_MAX_ATTACHMENT_BYTES`. Bỏ trống `DATABASE_URL`
+`GATEWAY_MAX_ATTACHMENT_BYTES`, `GATEWAY_COMMANDS`. Bỏ trống `DATABASE_URL`
 sẽ dùng store SQLite; `CORE_URL=none` bỏ luôn Brain Core và Brain MCP.
 
 **MCP** — `MCP_PORT`, `CORE_URL`.

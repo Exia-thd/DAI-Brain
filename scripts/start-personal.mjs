@@ -41,6 +41,9 @@ if (flag('help')) {
   --project <name>   which memory scope to use          (default: personal)
   --mcp <file>       MCP config for your memory server  (default: ./plugin-mcp.json)
   --no-probe         skip the startup check that the memory server answers
+
+In the chat box: /sync rescans the project into memory, /pull fast-forwards the
+repository first, /help lists what is configured.
   --tools <list>     comma-separated tools to allow     (default: the plugin's)
   --model <id>       model for every turn               (default: $CLAUDE_MODEL)
   --port <n>         (default 8080)
@@ -456,16 +459,56 @@ if (!existsSync(entry)) {
 }
 
 /*
+ * `/sync` and `/pull`, typed in the chat box.
+ *
+ * Memory is built by a scan, and no MCP tool can run one -- so after a pull the
+ * model answers about the repository as it was, with nothing to say it is
+ * behind. These are the two commands that fix that, and they are configured
+ * here rather than in the Gateway because knowing that `sync` means the
+ * plugin's ingest is the launcher's job, not the Gateway's.
+ *
+ * `pull` is separate from `sync`, and is `--ff-only`: a chat window may
+ * fast-forward a branch, but it does not get to create a merge commit in
+ * somebody's repository on their behalf.
+ */
+if (!process.env.GATEWAY_COMMANDS) {
+  const servers = JSON.parse(readFileSync(mcpPath, 'utf8')).mcpServers ?? {};
+  const memory = Object.values(servers).find((server) => server?.command);
+  const commands = { pull: ['git', 'pull', '--ff-only'] };
+  if (memory) {
+    // The same program, asked to scan instead of to serve.
+    const args = (memory.args ?? []).map((arg) => (arg === 'serve' ? 'ingest' : arg));
+    if (!args.includes('ingest')) args.push('ingest');
+    commands.sync = [memory.command, ...args];
+  }
+  env.GATEWAY_COMMANDS = JSON.stringify(commands);
+}
+
+/*
  * The last thing before the window opens, because it is the one check that
  * fails after everything else has passed.
  */
 if (!flag('no-probe')) {
   const configured = JSON.parse(readFileSync(mcpPath, 'utf8')).mcpServers ?? {};
+  /*
+   * The probe's answer is also the allow list.
+   *
+   * `mcp__<server>__*` is the documented way to allow a whole server and it
+   * works on the CLI I can test against, but not on every CLI in the field --
+   * one refused every call with "Claude requested permissions to use
+   * mcp__dai-memory__dai_memory_search, but you haven't granted", which is
+   * indistinguishable from having no memory at all. Since the probe has just
+   * asked the server for its tools by name, naming them is free and needs no
+   * feature from the CLI. The globs stay on the end for a CLI that prefers
+   * them; an entry that matches nothing is ignored.
+   */
+  const named = [];
   for (const [name, server] of Object.entries(configured)) {
     // An `http` server is somebody else's process; there is nothing to start.
     if (!server?.command) continue;
     const probe = await probeMcpServer(server);
     if (probe.ok) {
+      named.push(...probe.tools.map((tool) => `mcp__${name}__${tool}`), `mcp__${name}`, `mcp__${name}__*`);
       const shown = probe.tools.slice(0, 4).join(', ');
       console.log(`[chat] ${name}: ${probe.tools.length} tools (${shown}`
         + `${probe.tools.length > 4 ? ', …' : ''})`);
@@ -477,6 +520,10 @@ if (!flag('no-probe')) {
       console.error(`[chat] the chat will open, but it will have no memory from ${name}.`);
       console.error('[chat] pass --no-probe to skip this check.\n');
     }
+  }
+  // Only over the default. Somebody who passed --tools meant it.
+  if (named.length > 0 && env.GATEWAY_EXTRA_ALLOWED_TOOLS === DEFAULT_TOOLS) {
+    env.GATEWAY_EXTRA_ALLOWED_TOOLS = named.join(',');
   }
 }
 
