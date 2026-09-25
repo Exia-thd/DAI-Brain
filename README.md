@@ -194,6 +194,48 @@ reasonable; writing and executing are not, so `Bash`, `Write`, `Edit`,
 `GATEWAY_DISALLOWED_TOOLS` changes the list.
 
 
+### Keeping memory level with the code
+
+Memory is built by a scan, and no MCP tool can run one. So after `git pull` the
+model answers about the repository as it was at the last scan, and nothing in
+the answer says it is behind — which is the failure mode that matters, because
+a confidently stale answer reads exactly like a current one.
+
+Two commands, typed into the chat box:
+
+```
+/sync     rescan the project into memory
+/pull     git pull --ff-only, then you /sync
+/help     what is configured here
+```
+
+They run in the project directory, cost nothing, and never reach the model — the
+Gateway runs them itself and streams the output into the conversation. A `/sync`
+also works when the conversation is over its cost ceiling, which is exactly when
+somebody wants it.
+
+`pull` is separate from `sync`, and is `--ff-only`: a chat window may
+fast-forward a branch, but it does not get to create a merge commit in your
+repository on your behalf. Run `/pull` then `/sync` when you want both.
+
+A re-scan is not destructive — verified before this was built. Memories written
+from chat survive it; only what the scan produces is rebuilt. `dai-memory init
+--fresh` is the one that removes recorded memories, and nothing here runs it.
+
+The commands come from `GATEWAY_COMMANDS`, a JSON object of name → argv:
+
+```json
+{"sync": ["dai-memory", "ingest"], "pull": ["git", "pull", "--ff-only"]}
+```
+
+`pnpm chat` writes it from whatever memory server your MCP config names, so
+swapping the memory layer changes that, not the Gateway. Argv rather than a
+command line, because the alternative is quoting, and quoting is how a path with
+a space in it becomes two arguments on the one platform where paths have spaces.
+
+A message can only choose a name. `/sync --force` and `/sync; rm -rf /` are not
+commands at all — they are ordinary messages, and go to the model as text.
+
 ### Attaching files
 
 The composer takes files: the **＋** button, drag and drop onto it, or paste.
@@ -815,7 +857,7 @@ data.
 `GATEWAY_DEV_SCOPE`, `GATEWAY_WRITEBACK*`, `GATEWAY_EXTRA_MCP_CONFIG`,
 `GATEWAY_EXTRA_ALLOWED_TOOLS`, `GATEWAY_SQLITE_PATH`,
 `GATEWAY_MAX_CONVERSATION_COST_USD`, `GATEWAY_MAX_ATTACHMENTS`,
-`GATEWAY_MAX_ATTACHMENT_BYTES`. Leaving `DATABASE_URL`
+`GATEWAY_MAX_ATTACHMENT_BYTES`, `GATEWAY_COMMANDS`. Leaving `DATABASE_URL`
 unset selects the SQLite store; `CORE_URL=none` drops Brain Core and Brain MCP.
 
 **MCP** — `MCP_PORT`, `CORE_URL`.

@@ -188,6 +188,7 @@ Thử lần lượt:
    → thấy chip **searching memory**, và câu trả lời nhắc đúng lý do.
 4. Kéo một file log vào khung soạn (hoặc bấm **＋**) rồi hỏi `lỗi gì ở đây?`
    → file hiện thành một chip, rồi tới chip **Read**, rồi câu trả lời.
+5. Sau khi `git pull`, gõ `/sync` → memory được quét lại trước khi bạn hỏi tiếp.
 
 Bước 3 là phép thử thật: hội thoại mới, không có ngữ cảnh nào, câu trả lời phải
 đến từ memory.
@@ -300,6 +301,8 @@ bạn biết nhánh nào không đóng góp và **tại sao**.
 | `No memory store found at or above ...` | lượt chat chạy ở thư mục không có store | truyền `--dir` trỏ đúng thư mục bạn đã chạy `dai-memory init` |
 | `attachments total more than ...` | một tin nhắn mang quá nhiều byte | gửi ít file hơn, hoặc chạy `pnpm chat` với `GATEWAY_MAX_ATTACHMENT_BYTES` lớn hơn |
 | File đính kèm không được nhắc tới trong câu trả lời | model không được yêu cầu đọc nó | đường dẫn được chèn tự động vào tin nhắn; nếu `Read` nằm trong `GATEWAY_DISALLOWED_TOOLS` thì nó không mở được |
+| `Claude requested permissions to use mcp__dai-memory__…, but you haven't granted` | CLI của bạn không nhận allow glob `mcp__server__*` | pull bản mới: launcher giờ cho phép từng tool theo đúng tên server báo về, không cần glob |
+| Sau `git pull` mà câu trả lời vẫn nói về code cũ | memory còn giữ lần scan trước | gõ `/sync` trong khung chat; `/pull` để fast-forward trước |
 | `This conversation has spent $5.00...` | chạm trần chi phí | bấm **+ New chat**, hoặc `pnpm chat --budget 20` |
 | `Invalid API key · Please run /login` | CLI chưa đăng nhập, hoặc Gateway đang cách ly config dir | chạy `claude` đăng nhập một lần; nếu có `ANTHROPIC_API_KEY` mà vẫn lỗi, đặt `GATEWAY_ISOLATE_CLAUDE_CONFIG=false` |
 | Model nói không tin kết quả memory | có MCP server khai báo mà không chạy | bỏ server đó khỏi config; khai báo server chết còn tệ hơn không khai |
